@@ -29,58 +29,70 @@ export class MatlabInterpreter {
     let activePlot: 'bode' | 'rlocus' | 'nyquist' | 'step' | 'pzmap' | undefined;
     let targetTF: TransferFunction | undefined;
 
+    // Split statements cleanly by newline and semicolon
+    const statements: string[] = [];
     for (let rawLine of lines) {
       let line = rawLine.trim();
       if (!line || line.startsWith('%')) continue;
 
-      // Strip comments
+      // Strip trailing comment
       if (line.includes('%')) {
         line = line.split('%')[0].trim();
       }
 
+      const parts = line.split(';').map(p => p.trim()).filter(Boolean);
+      statements.push(...parts);
+    }
+
+    for (const stmt of statements) {
       // Check plot commands
-      const plotMatch = line.match(/^(bode|rlocus|nyquist|step|pzmap|margin|damp)\s*\(([^)]+)\)/i);
+      const plotMatch = stmt.match(/^(bode|rlocus|nyquist|step|pzmap|margin|damp)\s*\(([^)]+)\)/i);
       if (plotMatch) {
         const cmd = plotMatch[1].toLowerCase();
         const arg = plotMatch[2].trim();
-        const tfObj = this.evalExpression(arg);
 
-        if (tfObj && tfObj.type === 'tf') {
-          targetTF = tfObj;
-          if (cmd === 'bode' || cmd === 'margin') {
-            activePlot = 'bode';
-            lastOutput += `>> ${line}\nPlotting Bode Diagram for ${arg}...\n`;
-          } else if (cmd === 'rlocus') {
-            activePlot = 'rlocus';
-            lastOutput += `>> ${line}\nPlotting Root Locus for ${arg}...\n`;
-          } else if (cmd === 'nyquist') {
-            activePlot = 'nyquist';
-            lastOutput += `>> ${line}\nPlotting Nyquist Diagram for ${arg}...\n`;
-          } else if (cmd === 'step') {
-            activePlot = 'step';
-            lastOutput += `>> ${line}\nPlotting Step Response for ${arg}...\n`;
-          } else if (cmd === 'pzmap') {
-            activePlot = 'pzmap';
-            lastOutput += `>> ${line}\nPlotting Pole-Zero Map for ${arg}...\n`;
-          } else if (cmd === 'damp') {
-            lastOutput += `>> ${line}\nEigenvalue          Damping     Freq. (rad/s)\n`;
-            tfObj.poles.forEach(p => {
-              const wn = p.abs();
-              const zeta = wn > 1e-6 ? -p.re / wn : 0;
-              lastOutput += `${p.toString().padEnd(20)} ${zeta.toFixed(3).padEnd(11)} ${wn.toFixed(2)}\n`;
-            });
+        try {
+          const tfObj = this.evalExpression(arg);
+
+          if (tfObj && tfObj.type === 'tf') {
+            targetTF = tfObj;
+            if (cmd === 'bode' || cmd === 'margin') {
+              activePlot = 'bode';
+              lastOutput += `>> ${stmt}\nPlotting Bode Diagram for ${arg}...\n`;
+            } else if (cmd === 'rlocus') {
+              activePlot = 'rlocus';
+              lastOutput += `>> ${stmt}\nPlotting Root Locus for ${arg}...\n`;
+            } else if (cmd === 'nyquist') {
+              activePlot = 'nyquist';
+              lastOutput += `>> ${stmt}\nPlotting Nyquist Diagram for ${arg}...\n`;
+            } else if (cmd === 'step') {
+              activePlot = 'step';
+              lastOutput += `>> ${stmt}\nPlotting Step Response for ${arg}...\n`;
+            } else if (cmd === 'pzmap') {
+              activePlot = 'pzmap';
+              lastOutput += `>> ${stmt}\nPlotting Pole-Zero Map for ${arg}...\n`;
+            } else if (cmd === 'damp') {
+              lastOutput += `>> ${stmt}\nEigenvalue          Damping     Freq. (rad/s)\n`;
+              tfObj.poles.forEach(p => {
+                const wn = p.abs();
+                const zeta = wn > 1e-6 ? -p.re / wn : 0;
+                lastOutput += `${p.toString().padEnd(20)} ${zeta.toFixed(3).padEnd(11)} ${wn.toFixed(2)}\n`;
+              });
+            }
+          } else {
+            lastOutput += `>> ${stmt}\nWarning: '${arg}' is not a valid transfer function.\n`;
           }
-        } else {
-          lastOutput += `>> ${line}\nError: Argument '${arg}' is not a valid transfer function.\n`;
+        } catch (e: any) {
+          lastOutput += `>> ${stmt}\nError in ${cmd}: ${e.message}\n`;
         }
         continue;
       }
 
       // Check variable assignment: var = expr
-      const assignMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+      const assignMatch = stmt.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
       if (assignMatch) {
         const varName = assignMatch[1];
-        const expr = assignMatch[2].replace(/;$/, '').trim();
+        const expr = assignMatch[2].trim();
 
         try {
           const val = this.evalExpression(expr);
@@ -95,14 +107,14 @@ export class MatlabInterpreter {
             lastOutput += `${varName} = [computed]\n\n`;
           }
         } catch (e: any) {
-          lastOutput += `Error evaluating '${line}': ${e.message}\n`;
+          lastOutput += `Error evaluating '${stmt}': ${e.message}\n`;
         }
         continue;
       }
 
       // Standalone expression
       try {
-        const val = this.evalExpression(line.replace(/;$/, ''));
+        const val = this.evalExpression(stmt);
         this.variables['ans'] = val;
         if (val && val.type === 'tf') {
           targetTF = val;
@@ -126,6 +138,12 @@ export class MatlabInterpreter {
   // Expression evaluator
   evalExpression(expr: string): any {
     expr = expr.trim();
+    if (!expr) return 0;
+
+    // Remove wrapping parentheses if redundant: ((s+1)) -> (s+1)
+    while (expr.startsWith('(') && expr.endsWith(')') && this.isMatchingParen(expr.slice(1, -1))) {
+      expr = expr.slice(1, -1).trim();
+    }
 
     // tf('s')
     if (/^tf\s*\(\s*['"]s['"]\s*\)$/i.test(expr)) {
@@ -158,18 +176,8 @@ export class MatlabInterpreter {
       return this.variables[expr];
     }
 
-    // Division: A / B
-    const divIdx = this.findTopLevelOperator(expr, '/');
-    if (divIdx !== -1) {
-      const left = this.evalExpression(expr.slice(0, divIdx));
-      const right = this.evalExpression(expr.slice(divIdx + 1));
-      return this.divide(left, right);
-    }
-
-    // Addition / Subtraction: A + B or A - B
-    const addSubIdx = this.findTopLevelOperator(expr, '+') !== -1 
-      ? this.findTopLevelOperator(expr, '+') 
-      : this.findTopLevelOperator(expr, '-');
+    // Addition / Subtraction (lowest precedence, split outside parens)
+    const addSubIdx = this.findLowestPrecedenceOp(expr, ['+', '-']);
     if (addSubIdx !== -1) {
       const op = expr[addSubIdx];
       const left = this.evalExpression(expr.slice(0, addSubIdx));
@@ -177,33 +185,54 @@ export class MatlabInterpreter {
       return op === '+' ? this.add(left, right) : this.subtract(left, right);
     }
 
-    // Multiplication: A * B
-    const mulIdx = this.findTopLevelOperator(expr, '*');
-    if (mulIdx !== -1) {
-      const left = this.evalExpression(expr.slice(0, mulIdx));
-      const right = this.evalExpression(expr.slice(mulIdx + 1));
-      return this.multiply(left, right);
+    // Division / Multiplication
+    const mulDivIdx = this.findLowestPrecedenceOp(expr, ['*', '/']);
+    if (mulDivIdx !== -1) {
+      const op = expr[mulDivIdx];
+      const left = this.evalExpression(expr.slice(0, mulDivIdx));
+      const right = this.evalExpression(expr.slice(mulDivIdx + 1));
+      return op === '*' ? this.multiply(left, right) : this.divide(left, right);
     }
 
-    // Parentheses (expr)
-    if (expr.startsWith('(') && expr.endsWith(')')) {
-      return this.evalExpression(expr.slice(1, -1));
+    // Power operator: expr ^ n
+    const powIdx = this.findLowestPrecedenceOp(expr, ['^']);
+    if (powIdx !== -1) {
+      const base = this.evalExpression(expr.slice(0, powIdx));
+      const exp = this.evalExpression(expr.slice(powIdx + 1));
+      return this.power(base, exp);
+    }
+
+    // Support implicit multiplication e.g. 2s -> 2*s, 5G -> 5*G
+    const implicitMatch = expr.match(/^([0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z_][a-zA-Z0-9_]*)$/);
+    if (implicitMatch) {
+      const num = Number(implicitMatch[1]);
+      const v = this.evalExpression(implicitMatch[2]);
+      return this.multiply(num, v);
     }
 
     throw new Error(`Cannot parse expression '${expr}'`);
   }
 
-  // Find operator not enclosed in parentheses
-  private findTopLevelOperator(expr: string, op: string): number {
+  private isMatchingParen(s: string): boolean {
     let depth = 0;
-    // Search from right to left for left-associativity
+    for (const c of s) {
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        if (depth < 0) return false;
+      }
+    }
+    return depth === 0;
+  }
+
+  private findLowestPrecedenceOp(expr: string, ops: string[]): number {
+    let depth = 0;
     for (let i = expr.length - 1; i >= 0; i--) {
       const ch = expr[i];
       if (ch === ')') depth++;
       else if (ch === '(') depth--;
-      else if (depth === 0 && ch === op) {
-        // Ensure it's not a leading negative sign
-        if (op === '-' && (i === 0 || ['+', '-', '*', '/', '('].includes(expr[i - 1].trim()))) {
+      else if (depth === 0 && ops.includes(ch)) {
+        if (ch === '-' && (i === 0 || ['+', '-', '*', '/', '^', '('].includes(expr[i - 1].trim()))) {
           continue;
         }
         return i;
@@ -212,15 +241,31 @@ export class MatlabInterpreter {
     return -1;
   }
 
+  private power(base: any, exp: any): any {
+    const n = typeof exp === 'number' ? Math.round(exp) : 1;
+    if (typeof base === 'number') {
+      return Math.pow(base, n);
+    }
+    if (base && base.type === 'tf') {
+      if (n === 0) return createTF([1], [1]);
+      let res = base;
+      for (let i = 1; i < n; i++) {
+        res = this.multiply(res, base);
+      }
+      return res;
+    }
+    return base;
+  }
+
   private multiply(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a * b;
-    if (typeof a === 'number' && b.type === 'tf') {
+    if (typeof a === 'number' && b?.type === 'tf') {
       return createTF(polyScale(b.num, a), b.den);
     }
-    if (a.type === 'tf' && typeof b === 'number') {
+    if (a?.type === 'tf' && typeof b === 'number') {
       return createTF(polyScale(a.num, b), a.den);
     }
-    if (a.type === 'tf' && b.type === 'tf') {
+    if (a?.type === 'tf' && b?.type === 'tf') {
       return createTF(conv(a.num, b.num), conv(a.den, b.den));
     }
     return 0;
@@ -228,13 +273,13 @@ export class MatlabInterpreter {
 
   private divide(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a / b;
-    if (typeof a === 'number' && b.type === 'tf') {
+    if (typeof a === 'number' && b?.type === 'tf') {
       return createTF(polyScale(b.den, a), b.num);
     }
-    if (a.type === 'tf' && typeof b === 'number') {
+    if (a?.type === 'tf' && typeof b === 'number') {
       return createTF(a.num, polyScale(a.den, b));
     }
-    if (a.type === 'tf' && b.type === 'tf') {
+    if (a?.type === 'tf' && b?.type === 'tf') {
       return createTF(conv(a.num, b.den), conv(a.den, b.num));
     }
     return 0;
@@ -242,17 +287,15 @@ export class MatlabInterpreter {
 
   private add(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a + b;
-    if (typeof a === 'number' && b.type === 'tf') {
-      // a + N/D = (a*D + N)/D
+    if (typeof a === 'number' && b?.type === 'tf') {
       const newNum = polyAdd(polyScale(b.den, a), b.num);
       return createTF(newNum, b.den);
     }
-    if (a.type === 'tf' && typeof b === 'number') {
+    if (a?.type === 'tf' && typeof b === 'number') {
       const newNum = polyAdd(a.num, polyScale(a.den, b));
       return createTF(newNum, a.den);
     }
-    if (a.type === 'tf' && b.type === 'tf') {
-      // N1/D1 + N2/D2 = (N1*D2 + N2*D1) / (D1*D2)
+    if (a?.type === 'tf' && b?.type === 'tf') {
       const t1 = conv(a.num, b.den);
       const t2 = conv(b.num, a.den);
       return createTF(polyAdd(t1, t2), conv(a.den, b.den));

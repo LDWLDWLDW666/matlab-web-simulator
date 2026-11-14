@@ -16,8 +16,10 @@ export const StepResponsePlot: React.FC<Props> = ({ tf }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+    if (!rect || rect.width <= 10 || rect.height <= 10) return;
+
+    const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);

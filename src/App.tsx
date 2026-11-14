@@ -7,6 +7,7 @@ import { RootLocusPlot } from './components/plots/RootLocusPlot';
 import { NyquistPlot } from './components/plots/NyquistPlot';
 import { StepResponsePlot } from './components/plots/StepResponsePlot';
 import { PZMapPlot } from './components/plots/PZMapPlot';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { 
   Play, RotateCcw, Download, Terminal, 
   Activity, Compass, Radio, BarChart3, Crosshair, 
@@ -391,11 +392,13 @@ export const App: React.FC = () => {
 
           {/* Active Plot Canvas Area */}
           <div className="flex-1 p-3 overflow-hidden">
-            {activeTab === 'bode' && <BodePlot tf={currentTF} />}
-            {activeTab === 'rlocus' && <RootLocusPlot tf={currentTF} />}
-            {activeTab === 'nyquist' && <NyquistPlot tf={currentTF} />}
-            {activeTab === 'step' && <StepResponsePlot tf={currentTF} />}
-            {activeTab === 'pzmap' && <PZMapPlot tf={currentTF} />}
+            <ErrorBoundary fallbackTitle="圖形渲染異常">
+              {activeTab === 'bode' && <BodePlot tf={currentTF} />}
+              {activeTab === 'rlocus' && <RootLocusPlot tf={currentTF} />}
+              {activeTab === 'nyquist' && <NyquistPlot tf={currentTF} />}
+              {activeTab === 'step' && <StepResponsePlot tf={currentTF} />}
+              {activeTab === 'pzmap' && <PZMapPlot tf={currentTF} />}
+            </ErrorBoundary>
           </div>
 
           {/* Bottom Panel: Interactive Command Window (REPL Console) */}

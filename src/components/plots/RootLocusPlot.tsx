@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction, CNumber } from '../../types';
 import { computeRootLocus, findRoots, polyAdd, polyScale } from '../../utils/math';
 
@@ -11,13 +11,17 @@ export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
   const [gainK, setGainK] = useState<number>(1.0);
   const [closedLoopPoles, setClosedLoopPoles] = useState<CNumber[]>([]);
 
-  const { branches, asymptotes } = computeRootLocus(tf);
+  const { branches, asymptotes } = useMemo(() => computeRootLocus(tf), [tf]);
 
   // Compute closed loop poles for current gain K
   useEffect(() => {
-    const charPoly = polyAdd(tf.den, polyScale(tf.num, gainK));
-    const roots = findRoots(charPoly);
-    setClosedLoopPoles(roots);
+    try {
+      const charPoly = polyAdd(tf.den, polyScale(tf.num, gainK));
+      const roots = findRoots(charPoly);
+      setClosedLoopPoles(roots);
+    } catch (e) {
+      console.error(e);
+    }
   }, [tf, gainK]);
 
   useEffect(() => {
@@ -26,8 +30,10 @@ export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+    if (!rect || rect.width <= 10 || rect.height <= 10) return;
+
+    const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
