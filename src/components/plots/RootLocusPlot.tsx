@@ -20,7 +20,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const { branches, asymptotes } = useMemo(() => computeRootLocus(tf), [tf]);
+  const { branches, paths, asymptotes } = useMemo(() => computeRootLocus(tf), [tf]);
 
   // Compute closed loop poles for current gain K
   useEffect(() => {
@@ -231,44 +231,28 @@ export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
       ctx.setLineDash([]);
     }
 
-    // Draw Root Locus Trajectories
-    const numRoots = tf.den.length - 1;
-    const paths: CNumber[][] = Array.from({ length: numRoots }, () => []);
-
-    branches.forEach((b, bIdx) => {
-      if (bIdx === 0) {
-        b.roots.forEach((r, idx) => paths[idx]?.push(r));
-      } else {
-        const prev = branches[bIdx - 1].roots;
-        const used = new Set<number>();
-        prev.forEach((pr, pIdx) => {
-          let bestIdx = -1;
-          let bestDist = Infinity;
-          b.roots.forEach((nr, nIdx) => {
-            if (!used.has(nIdx)) {
-              const d = Math.hypot(pr.re - nr.re, pr.im - nr.im);
-              if (d < bestDist) {
-                bestDist = d;
-                bestIdx = nIdx;
-              }
-            }
-          });
-          if (bestIdx !== -1) {
-            used.add(bestIdx);
-            paths[pIdx]?.push(b.roots[bestIdx]);
-          }
-        });
-      }
-    });
-
-    // Stroke locus paths
+    // Draw Root Locus Trajectories with smooth continuous paths
     ctx.strokeStyle = '#0284c7';
     ctx.lineWidth = 2.5;
     paths.forEach(path => {
       ctx.beginPath();
       let started = false;
-      path.forEach(pt => {
-        if (!isFinite(pt.re) || !isFinite(pt.im)) return;
+      for (let i = 0; i < path.length; i++) {
+        const pt = path[i];
+        if (!isFinite(pt.re) || !isFinite(pt.im)) continue;
+
+        // Discontinuity guard: never draw a line jumping across the real axis
+        if (started && i > 0) {
+          const prev = path[i - 1];
+          const crossAxis = (prev.im > 0.08 && pt.im < -0.08) || (prev.im < -0.08 && pt.im > 0.08);
+          const largeJump = Math.hypot(pt.re - prev.re, pt.im - prev.im) > 15;
+          if (crossAxis || largeJump) {
+            ctx.stroke();
+            ctx.beginPath();
+            started = false;
+          }
+        }
+
         const x = toPxX(pt.re);
         const y = toPxY(pt.im);
         if (!started) {
@@ -277,7 +261,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
         } else {
           ctx.lineTo(x, y);
         }
-      });
+      }
       ctx.stroke();
     });
 

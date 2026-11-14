@@ -350,9 +350,10 @@ export function simulateStepResponse(tf: TransferFunction, tEnd = 10, points = 5
   return { t, y, specs: { tr, tp, Mp, ts, yss } };
 }
 
-// Compute Root Locus Branches
+// Compute Root Locus Branches with continuous branch tracking
 export function computeRootLocus(tf: TransferFunction): {
   branches: { k: number; roots: CNumber[] }[];
+  paths: CNumber[][];
   asymptotes: { centroid: number; angles: number[] };
 } {
   const num = tf.num;
@@ -371,20 +372,64 @@ export function computeRootLocus(tf: TransferFunction): {
     }
   }
 
-  // Sample K log-spaced from 10^-3 to 10^4
-  const numK = 250;
-  const kMin = -3, kMax = 4;
+  if (n <= 0) {
+    return { branches: [], paths: [], asymptotes: { centroid: 0, angles: [] } };
+  }
+
+  // Sample K log-spaced from 10^-4 to 10^4
+  const numK = 350;
+  const kMin = -4, kMax = 4;
   const branches: { k: number; roots: CNumber[] }[] = [];
+  const paths: CNumber[][] = Array.from({ length: n }, () => []);
+
+  // Initialize paths at K = 0 with open loop poles
+  let currentRoots = tf.poles.map(p => new CNumber(p.re, p.im));
+  currentRoots.forEach((r, idx) => paths[idx].push(r));
 
   for (let i = 0; i <= numK; i++) {
     const k = Math.pow(10, kMin + (i / numK) * (kMax - kMin));
-    // Characteristic equation: den(s) + K * num(s) = 0
     const charPoly = polyAdd(den, polyScale(num, k));
-    const roots = findRoots(charPoly);
-    branches.push({ k, roots });
+    const rawRoots = findRoots(charPoly);
+    branches.push({ k, roots: rawRoots });
+
+    // Robust branch continuation matching with sign penalty
+    const used = new Set<number>();
+    const nextRoots: CNumber[] = new Array(n);
+
+    for (let idx = 0; idx < n; idx++) {
+      const prev = currentRoots[idx];
+      let bestDist = Infinity;
+      let bestJ = -1;
+
+      for (let j = 0; j < n; j++) {
+        if (used.has(j)) continue;
+        const cand = rawRoots[j];
+
+        // Heavy penalty if jumping across real axis between opposite complex halves
+        let penalty = 1;
+        if (prev.im > 0.04 && cand.im < -0.04) penalty = 5000;
+        if (prev.im < -0.04 && cand.im > 0.04) penalty = 5000;
+
+        const d = Math.hypot(prev.re - cand.re, prev.im - cand.im) * penalty;
+        if (d < bestDist) {
+          bestDist = d;
+          bestJ = j;
+        }
+      }
+
+      if (bestJ !== -1) {
+        used.add(bestJ);
+        nextRoots[idx] = rawRoots[bestJ];
+        paths[idx].push(rawRoots[bestJ]);
+      } else {
+        nextRoots[idx] = prev;
+      }
+    }
+
+    currentRoots = nextRoots;
   }
 
-  return { branches, asymptotes: { centroid, angles } };
+  return { branches, paths, asymptotes: { centroid, angles } };
 }
 
 // Format transfer function to LaTeX
