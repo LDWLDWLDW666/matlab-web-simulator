@@ -13,7 +13,7 @@ interface Props {
 export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Scaled open loop plant K * G(s)
+  // Scaled open loop plant K * G(s) (supports negative gain)
   const effectiveTF = useMemo(() => {
     try {
       return createTF(polyScale(tf.num, gainK), tf.den);
@@ -103,8 +103,8 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     const W = rect.width;
     const H = rect.height;
 
-    // Background (Slate Dark)
-    ctx.fillStyle = '#090d16';
+    // Background: Pure White
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
     const margin = { 
@@ -134,7 +134,6 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       return Math.pow(10, minDec + frac * totalDecades);
     };
 
-    // Calculate sample frequencies
     const N = Math.min(400, Math.max(150, Math.floor(plotW)));
     const freqs: number[] = [];
     const mags: number[] = [];
@@ -158,7 +157,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
 
     const phases = unwrapPhase(phasesRaw);
 
-    // Compute Y limits for Magnitude
+    // Magnitude range
     const visibleMags = mags.filter((_, idx) => {
       const x = xToPx(freqs[idx]);
       return x >= margin.left && x <= margin.left + plotW;
@@ -174,7 +173,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     const magMin = Math.floor(rawMagMin / 20) * 20 - 10;
     const magMax = Math.ceil(rawMagMax / 20) * 20 + 10;
 
-    // Y limits for Phase
+    // Phase range
     const visiblePhases = phases.filter((_, idx) => {
       const x = xToPx(freqs[idx]);
       return x >= margin.left && x <= margin.left + plotW;
@@ -193,7 +192,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     const magToPx = (m: number) => margin.top + subH - ((m - magMin) / (magMax - magMin)) * subH;
     const phaseToPx = (p: number) => margin.top + subH + gap + subH - ((p - phaseMin) / (phaseMax - phaseMin)) * subH;
 
-    // Helper: Draw Subplot Frame & Grid
+    // Subplot Helper
     const drawSubplot = (
       topY: number, 
       title: string, 
@@ -203,8 +202,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       toYPx: (v: number) => number, 
       isBottom: boolean
     ) => {
-      // Decade vertical lines
-      ctx.strokeStyle = '#1e293b';
+      ctx.strokeStyle = '#f1f5f9';
       ctx.lineWidth = 1;
       for (let dec = minDec - 2; dec <= maxDec + 2; dec++) {
         const w = Math.pow(10, dec);
@@ -217,7 +215,6 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         }
       }
 
-      // Horizontal grid lines
       const yTicks = getNiceTicks(yMin, yMax, 5);
       yTicks.forEach(yVal => {
         const y = toYPx(yVal);
@@ -230,13 +227,13 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       });
 
       // Title
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#333333';
       ctx.font = '600 11px Inter, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(`${title} (${unit})`, margin.left + 8, topY + 16);
 
-      // Y Labels
-      ctx.fillStyle = '#64748b';
+      // Y Labels: 80% black (#333333)
+      ctx.fillStyle = '#333333';
       ctx.font = '10px "Fira Code", monospace';
       ctx.textAlign = 'right';
       yTicks.forEach(yVal => {
@@ -246,7 +243,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         }
       });
 
-      // X Decades Labels (only on bottom subplot)
+      // X Decades Labels
       if (isBottom) {
         ctx.textAlign = 'center';
         for (let dec = minDec; dec <= maxDec; dec++) {
@@ -258,13 +255,12 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         }
       }
 
-      ctx.strokeStyle = '#334155';
+      ctx.strokeStyle = '#cbd5e1';
       ctx.strokeRect(margin.left, topY, plotW, subH);
     };
 
-    // Subplot 1: Magnitude
+    // Subplots
     drawSubplot(margin.top, 'Magnitude', 'dB', magMin, magMax, magToPx, false);
-    // Subplot 2: Phase
     drawSubplot(margin.top + subH + gap, 'Phase', 'deg', phaseMin, phaseMax, phaseToPx, true);
 
     // Clip curves
@@ -275,7 +271,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
 
     // 0 dB dashed line
     const y0 = magToPx(0);
-    ctx.strokeStyle = '#475569';
+    ctx.strokeStyle = '#94a3b8';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(margin.left, y0);
@@ -283,7 +279,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Magnitude Curve (Sky Blue)
+    // Magnitude Curve: Deep Green (#166534)
     ctx.beginPath();
     for (let i = 0; i < freqs.length; i++) {
       const x = xToPx(freqs[i]);
@@ -291,7 +287,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#166534';
     ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
@@ -302,9 +298,9 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.rect(margin.left, margin.top + subH + gap, plotW, subH);
     ctx.clip();
 
-    // -180 deg line (Red critical line)
+    // -180 deg line: Red critical line (#dc2626)
     const y180 = phaseToPx(-180);
-    ctx.strokeStyle = '#ef4444';
+    ctx.strokeStyle = '#dc2626';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(margin.left, y180);
@@ -312,7 +308,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Phase Curve (Slate Neutral)
+    // Phase Curve: Muted dark slate (#555555)
     ctx.beginPath();
     for (let i = 0; i < freqs.length; i++) {
       const x = xToPx(freqs[i]);
@@ -320,16 +316,16 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#555555';
+    ctx.lineWidth = 2.2;
     ctx.stroke();
     ctx.restore();
 
-    // Annotations for wgc, PM & wpc, GM
+    // PM & GM Annotations
     if (specs.wgc && specs.PM !== null) {
       const xG = xToPx(specs.wgc);
       if (xG >= margin.left && xG <= margin.left + plotW) {
-        ctx.strokeStyle = '#38bdf8';
+        ctx.strokeStyle = '#166534';
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(xG, margin.top);
@@ -337,16 +333,16 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // PM bar (Sky Blue)
+        // PM bar: Deep Green
         const yP = phaseToPx(-180 + specs.PM);
-        ctx.strokeStyle = '#38bdf8';
+        ctx.strokeStyle = '#166534';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(xG, y180);
         ctx.lineTo(xG, yP);
         ctx.stroke();
 
-        ctx.fillStyle = '#38bdf8';
+        ctx.fillStyle = '#166534';
         ctx.beginPath();
         ctx.arc(xG, yP, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -356,7 +352,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     if (specs.wpc && specs.GM !== null) {
       const xP = xToPx(specs.wpc);
       if (xP >= margin.left && xP <= margin.left + plotW) {
-        ctx.strokeStyle = '#ef4444';
+        ctx.strokeStyle = '#dc2626';
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(xP, margin.top);
@@ -364,49 +360,49 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // GM bar (Red)
+        // GM bar: Red
         const yM = magToPx(-specs.GM);
-        ctx.strokeStyle = '#ef4444';
+        ctx.strokeStyle = '#dc2626';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(xP, y0);
         ctx.lineTo(xP, yM);
         ctx.stroke();
 
-        ctx.fillStyle = '#ef4444';
+        ctx.fillStyle = '#dc2626';
         ctx.beginPath();
         ctx.arc(xP, yM, 4, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-  }, [tf, zoom, panX, specs]);
+  }, [effectiveTF, zoom, panX, specs]);
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
+    <div className="relative w-full h-full flex flex-col bg-white rounded-lg overflow-hidden border border-neutral-200 select-none shadow-sm">
       {/* Top Banner */}
-      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
-        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
-          <span className="font-semibold text-slate-200">Bode Plot (波德圖)</span>
-          <span className="text-sky-400">― 幅值 (dB)</span>
-          <span className="text-slate-300">― 相位 (deg)</span>
-          <span className="text-red-400">- - 180°臨界</span>
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-[#f8fafc] border-b border-neutral-200 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-[#333333]">
+          <span className="font-bold text-[#333333]">Bode Plot (波德圖)</span>
+          <span className="text-[#166534] font-semibold">― 幅值 (dB)</span>
+          <span className="text-[#555555]">― 相位 (deg)</span>
+          <span className="text-[#dc2626]">- - 180°臨界</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            PM = <strong className={specs.PM && specs.PM > 0 ? "text-sky-400" : "text-red-400"}>{specs.PM !== null ? `${specs.PM.toFixed(1)}°` : '∞'}</strong>
+          <span className="bg-white px-2 py-0.5 rounded border border-neutral-200 text-[#333333]">
+            PM = <strong className={specs.PM && specs.PM > 0 ? "text-[#166534]" : "text-[#dc2626]"}>{specs.PM !== null ? `${specs.PM.toFixed(1)}°` : '∞'}</strong>
           </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            GM = <strong className={specs.GM && specs.GM > 0 ? "text-sky-400" : "text-red-400"}>{specs.GM !== null ? `${specs.GM.toFixed(1)} dB` : '∞'}</strong>
+          <span className="bg-white px-2 py-0.5 rounded border border-neutral-200 text-[#333333]">
+            GM = <strong className={specs.GM && specs.GM > 0 ? "text-[#166534]" : "text-[#dc2626]"}>{specs.GM !== null ? `${specs.GM.toFixed(1)} dB` : '∞'}</strong>
           </span>
-          <span className={`px-2 py-0.5 rounded font-bold ${specs.isStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
+          <span className={`px-2 py-0.5 rounded font-bold ${specs.isStable ? "bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0]" : "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"}`}>
             {specs.isStable ? "開迴路穩定" : "開迴路不穩定"}
           </span>
         </div>
       </div>
 
       <div 
-        className={`flex-1 w-full relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 w-full relative bg-white ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -419,38 +415,38 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         />
 
         {/* Floating Toolbar */}
-        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/95 backdrop-blur border border-neutral-200 p-1 rounded-lg shadow-sm">
           <button
             onClick={() => handleZoom(1.3)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="放大頻率軸"
           >
-            <ZoomIn className="w-4 h-4 text-sky-400" />
+            <ZoomIn className="w-4 h-4 text-[#166534]" />
           </button>
           <button
             onClick={() => handleZoom(0.77)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="縮小頻率軸"
           >
-            <ZoomOut className="w-4 h-4 text-sky-400" />
+            <ZoomOut className="w-4 h-4 text-[#166534]" />
           </button>
-          <div className="w-[1px] h-4 bg-slate-700 mx-0.5" />
+          <div className="w-[1px] h-4 bg-neutral-200 mx-0.5" />
           <button
             onClick={handleReset}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#555555] rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <RotateCcw className="w-3.5 h-3.5 text-[#555555]" />
             <span className="hidden sm:inline">重設</span>
           </button>
-          <div className="text-[10px] text-slate-400 font-mono px-1">
+          <div className="text-[10px] text-[#555555] font-mono px-1">
             {Math.round(zoom * 100)}%
           </div>
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
-          <Move className="w-3 h-3 text-sky-400" />
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-[#555555] bg-white/90 px-2 py-0.5 rounded border border-neutral-200 pointer-events-none shadow-xs">
+          <Move className="w-3 h-3 text-[#166534]" />
           <span className="hidden sm:inline">滾輪/雙指縮放 • 水平拖曳平移</span>
           <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>

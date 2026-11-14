@@ -96,8 +96,8 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
     const W = rect.width;
     const H = rect.height;
 
-    // Background (Slate Dark)
-    ctx.fillStyle = '#090d16';
+    // Background: Pure White
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
     const pad = Math.min(45, Math.max(25, W * 0.08));
@@ -129,11 +129,11 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
     ctx.rect(pad, pad, plotW, plotH);
     ctx.clip();
 
-    // Subtle Grid (Slate)
+    // Subtle Grid (Light Grey)
     const sigmaTicks = getNiceTicks(visibleMinSigma, visibleMaxSigma, Math.max(4, Math.floor(plotW / 80)));
     const omegaTicks = getNiceTicks(visibleMinOmega, visibleMaxOmega, Math.max(4, Math.floor(plotH / 60)));
 
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = '#f1f5f9';
     ctx.lineWidth = 1;
     sigmaTicks.forEach(s => {
       const x = toPxX(s);
@@ -155,45 +155,46 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
     const x0 = toPxX(0);
     const y0 = toPxY(0);
 
-    // Real Axis (Slate)
-    ctx.strokeStyle = '#475569';
+    // Real Axis
+    ctx.strokeStyle = '#94a3b8';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(pad, y0);
     ctx.lineTo(pad + plotW, y0);
     ctx.stroke();
 
-    // Imaginary Axis (Red stability line)
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 2;
+    // Imaginary Axis (Red Stability Boundary)
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 1.75;
     ctx.beginPath();
     ctx.moveTo(x0, pad);
     ctx.lineTo(x0, pad + plotH);
     ctx.stroke();
 
-    // Draw Zeros (o) (Sky Blue outline)
+    // Draw Zeros (o) - Deep Green (#166534)
     tf.zeros.forEach(z => {
       const x = toPxX(z.re);
       const y = toPxY(z.im);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.fillStyle = '#090d16';
+      ctx.strokeStyle = '#166534';
+      ctx.fillStyle = '#ffffff';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.arc(x, y, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#333333';
       ctx.font = '10px "Fira Code", monospace';
       ctx.fillText(`(${formatTick(z.re)}, ${formatTick(z.im)})`, x + 9, y - 4);
     });
 
-    // Draw Poles (x) (Stable: Sky Blue, Unstable: Red)
+    // Draw Poles (x) - Stable: Deep Green (#166534), Unstable: Red (#dc2626)
     tf.poles.forEach(p => {
       const x = toPxX(p.re);
       const y = toPxY(p.im);
       const isRHP = p.re > 1e-4;
-      ctx.strokeStyle = isRHP ? '#ef4444' : '#38bdf8';
+      const poleColor = isRHP ? '#dc2626' : '#166534';
+      ctx.strokeStyle = poleColor;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(x - 5, y - 5);
@@ -202,15 +203,15 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
       ctx.lineTo(x - 5, y + 5);
       ctx.stroke();
 
-      ctx.fillStyle = isRHP ? '#ef4444' : '#38bdf8';
+      ctx.fillStyle = poleColor;
       ctx.font = '10px "Fira Code", monospace';
       ctx.fillText(`(${formatTick(p.re)}, ${formatTick(p.im)})`, x + 9, y - 4);
     });
 
     ctx.restore(); // Restore clip
 
-    // Draw Axis Labels outside (Slate)
-    ctx.fillStyle = '#64748b';
+    // Draw Axis Labels: 80% Black (#333333)
+    ctx.fillStyle = '#333333';
     ctx.font = '10px "Fira Code", monospace';
 
     sigmaTicks.forEach(s => {
@@ -229,8 +230,8 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
       }
     });
 
-    // Border (Slate)
-    ctx.strokeStyle = '#334155';
+    // Border
+    ctx.strokeStyle = '#cbd5e1';
     ctx.strokeRect(pad, pad, plotW, plotH);
 
   }, [tf, zoom, pan]);
@@ -238,24 +239,24 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
   const hasRHP = tf.poles.some(p => p.re > 1e-4);
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
+    <div className="relative w-full h-full flex flex-col bg-white rounded-lg overflow-hidden border border-neutral-200 select-none shadow-sm">
       {/* Top Banner */}
-      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
-        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
-          <span className="font-semibold text-slate-200">Pole-Zero Map (極零點圖)</span>
-          <span className="text-sky-400">✕ 左半平面極點 (穩定)</span>
-          <span className="text-red-400">✕ 右半平面極點 (不穩定)</span>
-          <span className="text-sky-300">○ 零點</span>
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-[#f8fafc] border-b border-neutral-200 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-[#333333]">
+          <span className="font-bold text-[#333333]">Pole-Zero Map (極零點圖)</span>
+          <span className="text-[#166534] font-semibold">✕ 左半面極點 (穩定)</span>
+          <span className="text-[#dc2626] font-semibold">✕ 右半面極點 (不穩定)</span>
+          <span className="text-[#166534]">○ 零點</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className={`px-2 py-0.5 rounded font-bold ${!hasRHP ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
-            {!hasRHP ? "開迴路無右半極點 (BIBO穩定)" : "具右半極點 (開迴路不穩定)"}
+          <span className={`px-2 py-0.5 rounded font-bold ${!hasRHP ? "bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0]" : "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"}`}>
+            {!hasRHP ? "無右半平面極點 (開迴路穩定)" : "具右半極點 (開迴路不穩定)"}
           </span>
         </div>
       </div>
 
       <div 
-        className={`flex-1 w-full relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 w-full relative bg-white ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -268,38 +269,38 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
         />
 
         {/* Floating Toolbar */}
-        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/95 backdrop-blur border border-neutral-200 p-1 rounded-lg shadow-sm">
           <button
             onClick={() => handleZoom(1.3)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="放大"
           >
-            <ZoomIn className="w-4 h-4 text-sky-400" />
+            <ZoomIn className="w-4 h-4 text-[#166534]" />
           </button>
           <button
             onClick={() => handleZoom(0.77)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="縮小"
           >
-            <ZoomOut className="w-4 h-4 text-sky-400" />
+            <ZoomOut className="w-4 h-4 text-[#166534]" />
           </button>
-          <div className="w-[1px] h-4 bg-slate-700 mx-0.5" />
+          <div className="w-[1px] h-4 bg-neutral-200 mx-0.5" />
           <button
             onClick={handleReset}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#555555] rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <RotateCcw className="w-3.5 h-3.5 text-[#555555]" />
             <span className="hidden sm:inline">重設</span>
           </button>
-          <div className="text-[10px] text-slate-400 font-mono px-1">
+          <div className="text-[10px] text-[#555555] font-mono px-1">
             {Math.round(zoom * 100)}%
           </div>
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
-          <Move className="w-3 h-3 text-sky-400" />
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-[#555555] bg-white/90 px-2 py-0.5 rounded border border-neutral-200 pointer-events-none shadow-xs">
+          <Move className="w-3 h-3 text-[#166534]" />
           <span className="hidden sm:inline">滾輪/雙指縮放 • 滑鼠/單指拖曳平移</span>
           <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>

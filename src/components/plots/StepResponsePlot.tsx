@@ -14,7 +14,7 @@ interface Props {
 export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Closed loop transfer function T(s) = feedback(K * G(s), 1)
+  // Closed loop transfer function T(s) = feedback(K * G(s), 1) (supports negative K)
   const effectiveTF = useMemo(() => {
     try {
       const kG = createTF(polyScale(tf.num, gainK), tf.den);
@@ -111,8 +111,8 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     const W = rect.width;
     const H = rect.height;
 
-    // Background (Slate Dark)
-    ctx.fillStyle = '#090d16';
+    // Background: Pure White
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
     const margin = { 
@@ -153,11 +153,11 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     ctx.rect(margin.left, margin.top, plotW, plotH);
     ctx.clip();
 
-    // Subtle Grid (Slate)
+    // Grid (Light Grey)
     const tTicks = getNiceTicks(visibleMinT, visibleMaxT, Math.max(4, Math.floor(plotW / 80)));
     const yTicks = getNiceTicks(visibleMinY, visibleMaxY, Math.max(4, Math.floor(plotH / 50)));
 
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = '#f1f5f9';
     ctx.lineWidth = 1;
     tTicks.forEach(tt => {
       const x = toPxX(tt);
@@ -177,7 +177,7 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
 
     // Steady State target line (1.0 or yss)
     const yssY = toPxY(specs.yss);
-    ctx.strokeStyle = '#475569';
+    ctx.strokeStyle = '#94a3b8';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(margin.left, yssY);
@@ -185,13 +185,13 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 2% Settling Band
+    // Settling Band
     const yssPlus = toPxY(specs.yss * 1.02);
     const yssMinus = toPxY(specs.yss * 0.98);
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.05)';
+    ctx.fillStyle = 'rgba(22, 101, 52, 0.05)';
     ctx.fillRect(margin.left, Math.min(yssPlus, yssMinus), plotW, Math.abs(yssMinus - yssPlus));
 
-    // Response Curve (Sky Blue)
+    // Response Curve: Deep Green (#166534)
     ctx.beginPath();
     for (let i = 0; i < t.length; i++) {
       const xPos = toPxX(t[i]);
@@ -199,16 +199,16 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       if (i === 0) ctx.moveTo(xPos, yPos);
       else ctx.lineTo(xPos, yPos);
     }
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#166534';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Annotate Peak Time tp & Mp (Sky Blue)
+    // Annotate Peak Time tp & Mp: Red (#dc2626)
     if (specs.tp > 0 && specs.Mp > 0) {
       const tpPx = toPxX(specs.tp);
       const ypPx = toPxY(specs.yss * (1 + specs.Mp / 100));
 
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = '#dc2626';
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(tpPx, margin.top + plotH);
@@ -218,7 +218,7 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = '#38bdf8';
+      ctx.fillStyle = '#dc2626';
       ctx.beginPath();
       ctx.arc(tpPx, ypPx, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -228,10 +228,10 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       ctx.fillText(`Peak: ${specs.Mp.toFixed(1)}% (tp = ${specs.tp.toFixed(2)}s)`, tpPx + 6, ypPx - 6);
     }
 
-    // Annotate Settling Time ts (Slate Neutral)
+    // Annotate Settling Time ts: Deep Green (#166534)
     if (specs.ts > 0) {
       const tsPx = toPxX(specs.ts);
-      ctx.strokeStyle = '#94a3b8';
+      ctx.strokeStyle = '#166534';
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(tsPx, margin.top);
@@ -239,7 +239,7 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#166534';
       ctx.font = '600 10px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`ts = ${specs.ts.toFixed(2)}s`, tsPx, margin.top + 14);
@@ -247,8 +247,8 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
 
     ctx.restore(); // Restore clip
 
-    // Draw Labels outside (Slate)
-    ctx.fillStyle = '#64748b';
+    // Labels: 80% Black (#333333)
+    ctx.fillStyle = '#333333';
     ctx.font = '10px "Fira Code", monospace';
 
     tTicks.forEach(tt => {
@@ -268,7 +268,7 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     });
 
     // Axis titles
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = '#333333';
     ctx.font = '11px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Time (seconds)', margin.left + plotW / 2, H - 6);
@@ -279,33 +279,33 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     ctx.fillText('Amplitude y(t)', 0, 0);
     ctx.restore();
 
-    // Border (Slate)
-    ctx.strokeStyle = '#334155';
+    // Border
+    ctx.strokeStyle = '#cbd5e1';
     ctx.strokeRect(margin.left, margin.top, plotW, plotH);
 
   }, [t, y, specs, zoom, pan]);
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
+    <div className="relative w-full h-full flex flex-col bg-white rounded-lg overflow-hidden border border-neutral-200 select-none shadow-sm">
       {/* Top Banner */}
-      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
-        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
-          <span className="font-semibold text-slate-200">Step Response (階躍響應)</span>
-          <span className="text-sky-400">― 輸出 y(t)</span>
-          <span className="text-slate-400">- - 目標值 1.0</span>
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-[#f8fafc] border-b border-neutral-200 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-[#333333]">
+          <span className="font-bold text-[#333333]">Step Response (階躍響應)</span>
+          <span className="text-[#166534] font-semibold">― 輸出 y(t)</span>
+          <span className="text-[#94a3b8]">- - 目標值 1.0</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            超調 Mp = <strong className="text-sky-400 font-mono">{specs.Mp > 0 ? `${specs.Mp.toFixed(1)}%` : '0%'}</strong>
+          <span className="bg-white px-2 py-0.5 rounded border border-neutral-200 text-[#333333]">
+            超調 Mp = <strong className="text-[#dc2626] font-mono">{specs.Mp > 0 ? `${specs.Mp.toFixed(1)}%` : '0%'}</strong>
           </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            調節時間 ts = <strong className="text-sky-400 font-mono">{specs.ts.toFixed(2)}s</strong>
+          <span className="bg-white px-2 py-0.5 rounded border border-neutral-200 text-[#333333]">
+            調節時間 ts = <strong className="text-[#166534] font-mono">{specs.ts.toFixed(2)}s</strong>
           </span>
         </div>
       </div>
 
       <div 
-        className={`flex-1 w-full relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 w-full relative bg-white ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -318,38 +318,38 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
         />
 
         {/* Floating Zoom Toolbar */}
-        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/95 backdrop-blur border border-neutral-200 p-1 rounded-lg shadow-sm">
           <button
             onClick={() => handleZoom(1.3)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="放大"
           >
-            <ZoomIn className="w-4 h-4 text-sky-400" />
+            <ZoomIn className="w-4 h-4 text-[#166534]" />
           </button>
           <button
             onClick={() => handleZoom(0.77)}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#333333] rounded transition-all"
             title="縮小"
           >
-            <ZoomOut className="w-4 h-4 text-sky-400" />
+            <ZoomOut className="w-4 h-4 text-[#166534]" />
           </button>
-          <div className="w-[1px] h-4 bg-slate-700 mx-0.5" />
+          <div className="w-[1px] h-4 bg-neutral-200 mx-0.5" />
           <button
             onClick={handleReset}
-            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
+            className="p-1.5 hover:bg-neutral-100 active:bg-neutral-200 text-[#555555] rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <RotateCcw className="w-3.5 h-3.5 text-[#555555]" />
             <span className="hidden sm:inline">重設</span>
           </button>
-          <div className="text-[10px] text-slate-400 font-mono px-1">
+          <div className="text-[10px] text-[#555555] font-mono px-1">
             {Math.round(zoom * 100)}%
           </div>
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
-          <Move className="w-3 h-3 text-sky-400" />
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-[#555555] bg-white/90 px-2 py-0.5 rounded border border-neutral-200 pointer-events-none shadow-xs">
+          <Move className="w-3 h-3 text-[#166534]" />
           <span className="hidden sm:inline">滾輪/雙指縮放 • 滑鼠/單指拖曳平移</span>
           <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>

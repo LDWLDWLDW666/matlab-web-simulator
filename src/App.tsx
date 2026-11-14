@@ -104,7 +104,7 @@ export const App: React.FC = () => {
     return createTF([1], [1, 4, 10, 12, 5]); // Initial TF for 115 UST P2
   });
 
-  // Global Adjustable Parameters
+  // Global Adjustable Parameters (Supports negative K)
   const [gainK, setGainK] = useState<number>(1.0);
   const [sensitivityR, setSensitivityR] = useState<number>(0.1288);
   const [tEnd, setTEnd] = useState<number>(10);
@@ -117,7 +117,7 @@ export const App: React.FC = () => {
     {
       id: 'init-1',
       type: 'info',
-      text: '系統已就緒。可直接調整增益 K、輸入方程式或點選考題即刻生圖。'
+      text: '系統已就緒。可直接調整增益 K（支援負增益）、輸入方程式或點選考題即刻生圖。'
     }
   ]);
   const [, setVariables] = useState<Record<string, any>>({});
@@ -190,7 +190,6 @@ export const App: React.FC = () => {
     setFormulaDen(p.den);
     setActiveTab(p.tab);
     applyFormula(p.num, p.den);
-    // On mobile, immediately show plot when preset clicked
     setMobileTab('plot');
   };
 
@@ -239,7 +238,7 @@ export const App: React.FC = () => {
     a.click();
   };
 
-  // Compute closed loop poles for current gain K
+  // Compute closed loop poles for current gain K (supports negative K)
   const closedLoopPoles = useMemo(() => {
     try {
       const charPoly = polyAdd(currentTF.den, polyScale(currentTF.num, gainK));
@@ -271,30 +270,30 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
-      {/* Top Navbar (Solid Colors, Zero Gradients, Responsive) */}
-      <header className="h-13 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-5 flex-shrink-0">
+    <div className="flex flex-col h-[100dvh] w-screen bg-white text-[#333333] font-sans overflow-hidden select-none">
+      {/* Top Navbar: Clean White Background, 80% Black Text, Deep Green Brand */}
+      <header className="h-13 bg-white border-b border-neutral-200 flex items-center justify-between px-3 md:px-5 flex-shrink-0 shadow-xs">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white text-sm">
+          <div className="w-8 h-8 rounded-lg bg-[#166534] flex items-center justify-center font-bold text-white text-sm shadow-xs">
             G(s)
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm md:text-base tracking-tight text-white">自控線上模擬器</span>
-              <span className="text-[10px] bg-slate-800 border border-slate-700 text-sky-400 px-1.5 py-0.2 rounded font-mono hidden sm:inline">直覺免指令版</span>
+              <span className="font-extrabold text-sm md:text-base tracking-tight text-[#333333]">自動控制全能模擬器</span>
+              <span className="text-[10px] bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534] px-1.5 py-0.2 rounded font-mono font-medium hidden sm:inline">直覺免指令版</span>
             </div>
-            <p className="text-[10px] text-slate-400 hidden md:block">直接輸入方程式或調校 K 值即刻繪圖</p>
+            <p className="text-[10px] text-[#666666] hidden md:block">直接輸入方程式、支援負增益 K 即刻生圖</p>
           </div>
         </div>
 
         {/* Center: Mode Switcher */}
-        <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+        <div className="flex items-center bg-[#f8fafc] p-1 rounded-lg border border-neutral-200">
           <button
             onClick={() => setInputMode('formula')}
             className={`flex items-center gap-1 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
               inputMode === 'formula'
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#166534] text-white shadow-xs'
+                : 'text-[#666666] hover:text-[#333333]'
             }`}
           >
             <Calculator className="w-3.5 h-3.5" />
@@ -305,8 +304,8 @@ export const App: React.FC = () => {
             onClick={() => setInputMode('code')}
             className={`flex items-center gap-1 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
               inputMode === 'code'
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#166534] text-white shadow-xs'
+                : 'text-[#666666] hover:text-[#333333]'
             }`}
           >
             <Code2 className="w-3.5 h-3.5" />
@@ -319,23 +318,23 @@ export const App: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={exportPlot}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded border border-slate-700 transition-all"
+            className="flex items-center gap-1.5 bg-white hover:bg-neutral-50 text-[#333333] text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded border border-neutral-300 transition-all shadow-xs"
             title="匯出圖表 PNG"
           >
-            <Download className="w-3.5 h-3.5 text-sky-400" />
+            <Download className="w-3.5 h-3.5 text-[#166534]" />
             <span className="hidden sm:inline">匯出圖表</span>
           </button>
         </div>
       </header>
 
       {/* Mobile View Tab Switcher (Visible strictly on mobile < md) */}
-      <div className="md:hidden flex items-center bg-slate-900 border-b border-slate-800 p-1 flex-shrink-0">
+      <div className="md:hidden flex items-center bg-white border-b border-neutral-200 p-1 flex-shrink-0">
         <button
           onClick={() => setMobileTab('editor')}
           className={`flex-1 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
             mobileTab === 'editor'
-              ? 'bg-sky-600 text-white'
-              : 'text-slate-400 hover:text-slate-200'
+              ? 'bg-[#166534] text-white'
+              : 'text-[#666666] hover:text-[#333333]'
           }`}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -345,21 +344,21 @@ export const App: React.FC = () => {
           onClick={() => setMobileTab('plot')}
           className={`flex-1 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
             mobileTab === 'plot'
-              ? 'bg-sky-600 text-white'
-              : 'text-slate-400 hover:text-slate-200'
+              ? 'bg-[#166534] text-white'
+              : 'text-[#666666] hover:text-[#333333]'
           }`}
         >
           <Activity className="w-3.5 h-3.5" />
-          即時圖表視窗 ({plotTabNames[activeTab]})
+          圖表視窗 ({plotTabNames[activeTab]})
         </button>
       </div>
 
       {/* Main Workspace (Split View on Desktop, Tabbed on Mobile) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative bg-white">
         {/* ================= LEFT PANEL: Inputs & Parameters ================= */}
         <div 
           className={`
-            w-full md:w-[380px] lg:w-[420px] border-r border-slate-800 flex flex-col bg-slate-900/60 flex-shrink-0 overflow-y-auto
+            w-full md:w-[380px] lg:w-[420px] border-r border-neutral-200 flex flex-col bg-[#f8fafc]/70 flex-shrink-0 overflow-y-auto
             ${mobileTab === 'editor' ? 'flex' : 'hidden md:flex'}
           `}
         >
@@ -367,20 +366,20 @@ export const App: React.FC = () => {
             /* ================= MODE 1: VISUAL FORMULA MODE ================= */
             <div className="p-3 md:p-4 space-y-3 flex flex-col pb-16 md:pb-4">
               {/* Card 1: Direct Equation Input */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2.5">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+              <div className="bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-2">
+                  <span className="text-xs font-bold text-[#166534] flex items-center gap-1.5">
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                     輸入系統轉移函數 G(s)
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">支援因式與次方 (s+1)^2</span>
+                  <span className="text-[10px] text-[#666666] font-mono">支援因式 (s+1)^2</span>
                 </div>
 
                 {/* Numerator */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <label className="font-semibold text-slate-300">分子多項式 N(s) :</label>
-                    <span className="text-[10px] text-slate-500">如: 1, 10*(s+2)</span>
+                    <label className="font-semibold text-[#333333]">分子多項式 N(s) :</label>
+                    <span className="text-[10px] text-[#666666]">如: 1, 10*(s+2)</span>
                   </div>
                   <input
                     type="text"
@@ -390,21 +389,21 @@ export const App: React.FC = () => {
                       applyFormula(e.target.value, formulaDen);
                     }}
                     placeholder="例如: 10 * (s + 2) 或 25"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-sky-300 outline-none transition-all select-text"
+                    className="w-full bg-white border border-neutral-300 focus:border-[#166534] rounded-lg px-3 py-2 text-xs font-mono text-[#333333] outline-none transition-all select-text shadow-xs"
                   />
                 </div>
 
                 {/* Fraction Divider */}
                 <div className="relative py-0.5 flex items-center justify-center">
-                  <div className="w-full border-t border-slate-700"></div>
-                  <span className="absolute bg-slate-900 px-2 text-[9px] text-slate-500 font-bold uppercase">除以 (Over)</span>
+                  <div className="w-full border-t border-neutral-200"></div>
+                  <span className="absolute bg-white px-2 text-[9px] text-[#666666] font-bold uppercase">除以 (Over)</span>
                 </div>
 
                 {/* Denominator */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <label className="font-semibold text-slate-300">分母多項式 D(s) :</label>
-                    <span className="text-[10px] text-slate-500">如: s*(s+2)*(s+4)</span>
+                    <label className="font-semibold text-[#333333]">分母多項式 D(s) :</label>
+                    <span className="text-[10px] text-[#666666]">如: s*(s+2)*(s+4)</span>
                   </div>
                   <input
                     type="text"
@@ -414,27 +413,27 @@ export const App: React.FC = () => {
                       applyFormula(formulaNum, e.target.value);
                     }}
                     placeholder="例如: (s + 1)^2 * (s^2 + 2*s + 5)"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-sky-300 outline-none transition-all select-text"
+                    className="w-full bg-white border border-neutral-300 focus:border-[#166534] rounded-lg px-3 py-2 text-xs font-mono text-[#333333] outline-none transition-all select-text shadow-xs"
                   />
                 </div>
 
-                {/* Error Banner */}
+                {/* Error Banner: Red 20% Style */}
                 {formulaError && (
-                  <div className="flex items-center gap-2 p-2 bg-red-950/80 border border-red-800 rounded text-red-300 text-xs">
+                  <div className="flex items-center gap-2 p-2 bg-[#fef2f2] border border-[#fecaca] rounded text-[#dc2626] text-xs">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     <span>{formulaError}</span>
                   </div>
                 )}
               </div>
 
-              {/* Card 2: Interactive Gain K & System Specs (4-Color Slate & Sky Blue) */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2.5">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+              {/* Card 2: Interactive Gain K (Supports Negative Values!) */}
+              <div className="bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-2">
+                  <span className="text-xs font-bold text-[#166534] flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5" />
-                    迴路增益 K 即時調整
+                    迴路增益 K 調校 (支援負值)
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isClosedLoopStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isClosedLoopStable ? "bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0]" : "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"}`}>
                     {isClosedLoopStable ? "閉迴路穩定" : "閉迴路不穩定"}
                   </span>
                 </div>
@@ -442,70 +441,68 @@ export const App: React.FC = () => {
                 {/* K Slider and Direct Input */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 font-semibold">增益值 K:</span>
+                    <span className="text-[#333333] font-semibold">設定增益 K:</span>
                     <div className="flex items-center gap-1">
-                      <span className="text-slate-400 font-mono text-[11px]">K =</span>
+                      <span className="text-[#666666] font-mono text-[11px]">K =</span>
                       <input
                         type="number"
-                        min="0.01"
-                        max="1000"
                         step="0.1"
                         value={gainK}
-                        onChange={(e) => setGainK(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                        className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-center font-mono text-sky-400 font-bold text-xs outline-none focus:border-sky-500 select-text"
+                        onChange={(e) => setGainK(parseFloat(e.target.value) || 0)}
+                        className="w-20 bg-white border border-neutral-300 rounded px-2 py-1 text-center font-mono text-[#166534] font-bold text-xs outline-none focus:border-[#166534] select-text shadow-xs"
                       />
                     </div>
                   </div>
 
                   <input
                     type="range"
-                    min="0.1"
-                    max="100"
+                    min="-50"
+                    max="50"
                     step="0.1"
                     value={gainK}
                     onChange={(e) => setGainK(parseFloat(e.target.value))}
-                    className="w-full accent-sky-500 cursor-pointer h-2 bg-slate-950 rounded-lg"
+                    className="w-full accent-[#166534] cursor-pointer h-2 bg-neutral-200 rounded-lg"
                   />
 
-                  {/* K Quick Buttons */}
+                  {/* K Quick Buttons (Including negative K presets!) */}
                   <div className="flex items-center justify-between gap-1 pt-1">
-                    {[0.5, 1, 5, 10, 25, 48].map((kv) => (
+                    {[-20, -5, -1, 1, 5, 20].map((kv) => (
                       <button
                         key={kv}
                         onClick={() => setGainK(kv)}
                         className={`flex-1 py-1 rounded text-[11px] font-mono border transition-all ${
                           gainK === kv
-                            ? 'bg-sky-600 text-white border-sky-500 font-bold'
-                            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+                            ? 'bg-[#166534] text-white border-[#166534] font-bold'
+                            : 'bg-white text-[#333333] border-neutral-200 hover:border-[#166534]'
                         }`}
                       >
-                        {kv}
+                        {kv > 0 ? `+${kv}` : kv}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Closed Loop Specs at this K */}
-                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1 text-xs">
-                  <div className="flex justify-between text-slate-400">
+                <div className="bg-[#f8fafc] p-2.5 rounded-lg border border-neutral-200 space-y-1 text-xs">
+                  <div className="flex justify-between text-[#666666]">
                     <span>阻尼比 ζ:</span>
-                    <strong className="text-sky-400 font-mono">{zeta.toFixed(3)}</strong>
+                    <strong className="text-[#166534] font-mono">{zeta.toFixed(3)}</strong>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-[#666666]">
                     <span>自然頻率 ωn:</span>
-                    <strong className="text-sky-400 font-mono">{wn.toFixed(2)} rad/s</strong>
+                    <strong className="text-[#166534] font-mono">{wn.toFixed(2)} rad/s</strong>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-[#666666]">
                     <span>主導極點:</span>
-                    <strong className="text-slate-200 font-mono text-[11px]">{dominantPole?.toString() || 'N/A'}</strong>
+                    <strong className="text-[#333333] font-mono text-[11px]">{dominantPole?.toString() || 'N/A'}</strong>
                   </div>
                 </div>
               </div>
 
               {/* Card 3: Quick Click Exam Presets */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2">
-                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 border-b border-slate-800 pb-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
+              <div className="bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xs space-y-2">
+                <span className="text-xs font-bold text-[#333333] flex items-center gap-1.5 border-b border-neutral-200 pb-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#166534]" />
                   點選經典歷屆考題快速帶入
                 </span>
                 <div className="space-y-1.5 pt-1">
@@ -513,10 +510,10 @@ export const App: React.FC = () => {
                     <button
                       key={idx}
                       onClick={() => handleLoadFormulaPreset(p)}
-                      className="w-full text-left p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 text-xs transition-all group"
+                      className="w-full text-left p-2 rounded-lg bg-white hover:bg-[#f8fafc] border border-neutral-200 hover:border-[#166534] text-xs transition-all group shadow-xs"
                     >
-                      <div className="font-semibold text-slate-200 group-hover:text-sky-400">{p.title}</div>
-                      <div className="font-mono text-[10px] text-slate-400 truncate mt-0.5">
+                      <div className="font-semibold text-[#333333] group-hover:text-[#166534]">{p.title}</div>
+                      <div className="font-mono text-[10px] text-[#666666] truncate mt-0.5">
                         G(s) = ({p.num}) / ({p.den})
                       </div>
                     </button>
@@ -528,7 +525,7 @@ export const App: React.FC = () => {
               <div className="md:hidden pt-2">
                 <button
                   onClick={() => setMobileTab('plot')}
-                  className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+                  className="w-full py-2.5 bg-[#166534] hover:bg-green-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
                 >
                   <span>查看即時圖表視窗</span>
                   <ArrowRight className="w-4 h-4" />
@@ -537,10 +534,10 @@ export const App: React.FC = () => {
             </div>
           ) : (
             /* ================= MODE 2: MATLAB CODE SCRIPT MODE ================= */
-            <div className="flex flex-col h-full pb-16 md:pb-0">
-              <div className="h-9 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+            <div className="flex flex-col h-full pb-16 md:pb-0 bg-white">
+              <div className="h-9 px-4 bg-[#f8fafc] border-b border-neutral-200 flex items-center justify-between text-xs text-[#666666]">
+                <span className="font-semibold text-[#333333] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#166534]"></span>
                   MATLAB 腳本 (main.m)
                 </span>
                 <button
@@ -548,13 +545,13 @@ export const App: React.FC = () => {
                     runScript();
                     setMobileTab('plot');
                   }}
-                  className="flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] px-2.5 py-1 rounded"
+                  className="flex items-center gap-1 bg-[#166534] hover:bg-green-800 text-white text-[11px] px-2.5 py-1 rounded shadow-xs"
                 >
                   <Play className="w-3 h-3 fill-current" /> 執行生圖
                 </button>
               </div>
 
-              <div className="flex-1 p-3 bg-slate-950 font-mono text-xs overflow-auto">
+              <div className="flex-1 p-3 bg-white font-mono text-xs overflow-auto">
                 <textarea
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
@@ -566,13 +563,13 @@ export const App: React.FC = () => {
                     }
                   }}
                   spellCheck={false}
-                  className="w-full h-full bg-transparent text-sky-200 outline-none resize-none leading-relaxed font-mono select-text"
+                  className="w-full h-full bg-transparent text-[#333333] outline-none resize-none leading-relaxed font-mono select-text"
                   placeholder="% 在此輸入 MATLAB 程式碼"
                 />
               </div>
 
-              <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between text-xs">
-                <span className="text-slate-400">範本:</span>
+              <div className="p-3 border-t border-neutral-200 bg-[#f8fafc] flex items-center justify-between text-xs">
+                <span className="text-[#666666]">範本:</span>
                 <select 
                   onChange={(e) => {
                     const p = SCRIPT_PRESETS[e.target.value];
@@ -582,7 +579,7 @@ export const App: React.FC = () => {
                       runScript(p.code);
                     }
                   }}
-                  className="bg-slate-800 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1"
+                  className="bg-white text-[#333333] text-xs rounded border border-neutral-300 px-2 py-1 shadow-xs"
                 >
                   {Object.entries(SCRIPT_PRESETS).map(([key, item]) => (
                     <option key={key} value={key}>{item.title}</option>
@@ -596,19 +593,19 @@ export const App: React.FC = () => {
         {/* ================= RIGHT PANEL: Figure Studio & Parameter Bar ================= */}
         <div 
           className={`
-            flex-1 flex flex-col overflow-hidden bg-slate-950
+            flex-1 flex flex-col overflow-hidden bg-white
             ${mobileTab === 'plot' ? 'flex' : 'hidden md:flex'}
           `}
         >
           {/* Top 5 Plot Switcher Tabs (Scrollable on Mobile) */}
-          <div className="h-11 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-4 flex-shrink-0">
+          <div className="h-11 bg-white border-b border-neutral-200 flex items-center justify-between px-3 md:px-4 flex-shrink-0">
             <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap scrollbar-none py-1">
               <button
                 onClick={() => setActiveTab('rlocus')}
                 className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'rlocus'
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'text-[#666666] hover:text-[#333333] hover:bg-neutral-100'
                 }`}
               >
                 <Crosshair className="w-3.5 h-3.5" />
@@ -619,8 +616,8 @@ export const App: React.FC = () => {
                 onClick={() => setActiveTab('bode')}
                 className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'bode'
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'text-[#666666] hover:text-[#333333] hover:bg-neutral-100'
                 }`}
               >
                 <Activity className="w-3.5 h-3.5" />
@@ -631,8 +628,8 @@ export const App: React.FC = () => {
                 onClick={() => setActiveTab('nyquist')}
                 className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'nyquist'
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'text-[#666666] hover:text-[#333333] hover:bg-neutral-100'
                 }`}
               >
                 <Compass className="w-3.5 h-3.5" />
@@ -643,8 +640,8 @@ export const App: React.FC = () => {
                 onClick={() => setActiveTab('step')}
                 className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'step'
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'text-[#666666] hover:text-[#333333] hover:bg-neutral-100'
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
@@ -655,8 +652,8 @@ export const App: React.FC = () => {
                 onClick={() => setActiveTab('pzmap')}
                 className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'pzmap'
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'text-[#666666] hover:text-[#333333] hover:bg-neutral-100'
                 }`}
               >
                 <Radio className="w-3.5 h-3.5" />
@@ -668,66 +665,64 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={() => setMobileTab('editor')}
-                className="md:hidden flex items-center gap-1 text-[11px] bg-slate-800 text-sky-400 px-2 py-1 rounded border border-slate-700"
+                className="md:hidden flex items-center gap-1 text-[11px] bg-[#f8fafc] text-[#166534] px-2 py-1 rounded border border-neutral-300 font-medium"
               >
                 <ArrowLeft className="w-3 h-3" />
                 改方程式
               </button>
-              <div className="hidden lg:flex items-center gap-1.5 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-xs font-mono">
-                <span className="text-slate-400">目前繪圖:</span>
-                <span className="text-sky-400 font-bold">K · G(s)</span>
+              <div className="hidden lg:flex items-center gap-1.5 bg-[#f8fafc] px-2.5 py-0.5 rounded border border-neutral-200 text-xs font-mono">
+                <span className="text-[#666666]">受控廠:</span>
+                <span className="text-[#166534] font-bold">K · G(s)</span>
               </div>
             </div>
           </div>
 
           {/* ================= PERMANENT PARAMETER BAR ================= */}
-          <div className="min-h-10 bg-slate-900/90 border-b border-slate-800 px-3 md:px-4 py-1.5 flex flex-wrap items-center justify-between text-xs flex-shrink-0 gap-2">
-            {/* Loop Gain K slider + input */}
+          <div className="min-h-10 bg-[#f8fafc] border-b border-neutral-200 px-3 md:px-4 py-1.5 flex flex-wrap items-center justify-between text-xs flex-shrink-0 gap-2">
+            {/* Loop Gain K slider + input (Supports negative K) */}
             <div className="flex items-center gap-2">
-              <span className="font-bold text-sky-400 whitespace-nowrap flex items-center gap-1 text-[11px]">
+              <span className="font-bold text-[#166534] whitespace-nowrap flex items-center gap-1 text-[11px]">
                 <Sliders className="w-3.5 h-3.5" />
                 增益 K:
               </span>
               <input
                 type="number"
-                min="0.01"
-                max="1000"
                 step="0.1"
                 value={gainK}
-                onChange={e => setGainK(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-sky-400 font-bold text-xs select-text"
+                onChange={e => setGainK(parseFloat(e.target.value) || 0)}
+                className="w-16 bg-white border border-neutral-300 rounded px-1.5 py-0.5 text-center font-mono text-[#166534] font-bold text-xs select-text shadow-xs"
               />
               <input
                 type="range"
-                min="0.1"
-                max="100"
+                min="-50"
+                max="50"
                 step="0.1"
                 value={gainK}
                 onChange={e => setGainK(parseFloat(e.target.value))}
-                className="w-24 sm:w-32 accent-sky-500 cursor-pointer h-1.5"
+                className="w-24 sm:w-32 accent-[#166534] cursor-pointer h-1.5"
               />
               <div className="hidden sm:flex items-center gap-1">
-                {[0.5, 1, 5, 10, 25].map(kv => (
+                {[-10, -1, 1, 10].map(kv => (
                   <button
                     key={kv}
                     onClick={() => setGainK(kv)}
                     className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-all ${
                       gainK === kv
-                        ? 'bg-sky-600 text-white border-sky-500'
-                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        ? 'bg-[#166534] text-white border-[#166534]'
+                        : 'bg-white text-[#333333] border-neutral-300 hover:bg-neutral-100'
                     }`}
                   >
-                    K={kv}
+                    K={kv > 0 ? `+${kv}` : kv}
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Right: Specific plot controls */}
-            <div className="flex items-center gap-3 text-slate-300 text-[11px]">
+            <div className="flex items-center gap-3 text-[#333333] text-[11px]">
               {activeTab === 'nyquist' && (
-                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                  <span className="text-sky-400 font-semibold whitespace-nowrap">感度圓 r₀:</span>
+                <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded border border-neutral-200">
+                  <span className="text-[#166534] font-semibold whitespace-nowrap">感度圓 r₀:</span>
                   <input
                     type="number"
                     min="0.01"
@@ -735,14 +730,14 @@ export const App: React.FC = () => {
                     step="0.01"
                     value={sensitivityR}
                     onChange={e => setSensitivityR(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                    className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center font-mono text-sky-400 text-xs select-text"
+                    className="w-14 bg-white border border-neutral-300 rounded px-1 py-0.5 text-center font-mono text-[#166534] text-xs select-text"
                   />
                 </div>
               )}
 
               {activeTab === 'step' && (
-                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                  <span className="text-sky-400 font-semibold whitespace-nowrap">時長:</span>
+                <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded border border-neutral-200">
+                  <span className="text-[#166534] font-semibold whitespace-nowrap">時長:</span>
                   <input
                     type="range"
                     min="2"
@@ -750,16 +745,16 @@ export const App: React.FC = () => {
                     step="1"
                     value={tEnd}
                     onChange={e => setTEnd(parseInt(e.target.value))}
-                    className="w-16 accent-sky-500 cursor-pointer h-1.5"
+                    className="w-16 accent-[#166534] cursor-pointer h-1.5"
                   />
-                  <span className="font-mono text-sky-400 font-bold w-6">{tEnd}s</span>
+                  <span className="font-mono text-[#166534] font-bold w-6">{tEnd}s</span>
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-slate-400">
-                <span className="hidden sm:inline">ζ = <strong className="text-sky-400 font-mono">{zeta.toFixed(3)}</strong></span>
-                <span className="hidden sm:inline">ωn = <strong className="text-sky-400 font-mono">{wn.toFixed(2)}</strong></span>
-                <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
+              <div className="flex items-center gap-2 text-[#666666]">
+                <span className="hidden sm:inline">ζ = <strong className="text-[#166534] font-mono">{zeta.toFixed(3)}</strong></span>
+                <span className="hidden sm:inline">ωn = <strong className="text-[#166534] font-mono">{wn.toFixed(2)}</strong></span>
+                <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0]" : "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"}`}>
                   {isClosedLoopStable ? "閉迴路穩定" : "閉迴路不穩定"}
                 </span>
               </div>
@@ -767,7 +762,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Active Plot Canvas Area */}
-          <div className="flex-1 p-2 md:p-3 overflow-hidden relative">
+          <div className="flex-1 p-2 md:p-3 overflow-hidden relative bg-white">
             <ErrorBoundary fallbackTitle="圖形渲染異常">
               {activeTab === 'bode' && <BodePlot tf={currentTF} gainK={gainK} />}
               {activeTab === 'rlocus' && <RootLocusPlot tf={currentTF} gainK={gainK} setGainK={setGainK} />}
@@ -778,41 +773,41 @@ export const App: React.FC = () => {
           </div>
 
           {/* Collapsible Bottom Console */}
-          <div className={`border-t border-slate-800 flex flex-col bg-slate-900 transition-all ${isConsoleOpen ? 'h-32' : 'h-7'}`}>
+          <div className={`border-t border-neutral-200 flex flex-col bg-white transition-all ${isConsoleOpen ? 'h-32' : 'h-7'}`}>
             <button
               onClick={() => setIsConsoleOpen(prev => !prev)}
-              className="h-7 px-3 md:px-4 bg-slate-900 hover:bg-slate-800 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 w-full cursor-pointer select-none"
+              className="h-7 px-3 md:px-4 bg-[#f8fafc] hover:bg-neutral-100 border-b border-neutral-200 flex items-center justify-between text-xs text-[#666666] w-full cursor-pointer select-none"
             >
-              <span className="font-semibold text-slate-300 flex items-center gap-1.5 text-[11px]">
-                <Terminal className="w-3.5 h-3.5 text-sky-400" />
+              <span className="font-semibold text-[#333333] flex items-center gap-1.5 text-[11px]">
+                <Terminal className="w-3.5 h-3.5 text-[#166534]" />
                 系統終端輸出 (Output Log)
-                <span className="text-[10px] text-slate-500 font-normal">({isConsoleOpen ? '收起' : '展開'})</span>
+                <span className="text-[10px] text-[#666666] font-normal">({isConsoleOpen ? '收起' : '展開'})</span>
               </span>
               {isConsoleOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
             </button>
 
             {isConsoleOpen && (
               <>
-                <div className="flex-1 overflow-auto p-2.5 font-mono text-xs text-slate-300 space-y-1 bg-slate-950">
+                <div className="flex-1 overflow-auto p-2.5 font-mono text-xs text-[#333333] space-y-1 bg-white">
                   {consoleLogs.map(log => (
                     <div key={log.id} className="whitespace-pre-wrap leading-relaxed text-[11px]">
-                      {log.type === 'command' && <span className="text-sky-400 font-bold">{log.text}</span>}
-                      {log.type === 'error' && <span className="text-red-400 font-semibold">{log.text}</span>}
-                      {log.type === 'info' && <span className="text-slate-400 italic">{log.text}</span>}
-                      {log.type === 'output' && <span className="text-slate-200">{log.text}</span>}
+                      {log.type === 'command' && <span className="text-[#166534] font-bold">{log.text}</span>}
+                      {log.type === 'error' && <span className="text-[#dc2626] font-semibold">{log.text}</span>}
+                      {log.type === 'info' && <span className="text-[#666666] italic">{log.text}</span>}
+                      {log.type === 'output' && <span className="text-[#333333]">{log.text}</span>}
                     </div>
                   ))}
                   <div ref={consoleBottomRef} />
                 </div>
 
-                <form onSubmit={handleCommandSubmit} className="h-8 px-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
-                  <span className="font-mono text-sky-400 font-bold text-xs select-none">&gt;&gt;</span>
+                <form onSubmit={handleCommandSubmit} className="h-8 px-3 bg-[#f8fafc] border-t border-neutral-200 flex items-center gap-2">
+                  <span className="font-mono text-[#166534] font-bold text-xs select-none">&gt;&gt;</span>
                   <input
                     type="text"
                     value={commandInput}
                     onChange={e => setCommandInput(e.target.value)}
                     placeholder="可輸入 MATLAB 指令，例如 damp(G), margin(G)"
-                    className="flex-1 bg-transparent border-none text-xs text-slate-100 font-mono focus:outline-none select-text"
+                    className="flex-1 bg-transparent border-none text-xs text-[#333333] font-mono focus:outline-none select-text"
                   />
                 </form>
               </>
