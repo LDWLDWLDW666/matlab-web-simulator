@@ -241,7 +241,7 @@ export class MatlabInterpreter {
     return -1;
   }
 
-  private power(base: any, exp: any): any {
+  power(base: any, exp: any): any {
     const n = typeof exp === 'number' ? Math.round(exp) : 1;
     if (typeof base === 'number') {
       return Math.pow(base, n);
@@ -257,7 +257,7 @@ export class MatlabInterpreter {
     return base;
   }
 
-  private multiply(a: any, b: any): any {
+  multiply(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a * b;
     if (typeof a === 'number' && b?.type === 'tf') {
       return createTF(polyScale(b.num, a), b.den);
@@ -271,7 +271,7 @@ export class MatlabInterpreter {
     return 0;
   }
 
-  private divide(a: any, b: any): any {
+  divide(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a / b;
     if (typeof a === 'number' && b?.type === 'tf') {
       return createTF(polyScale(b.den, a), b.num);
@@ -285,7 +285,7 @@ export class MatlabInterpreter {
     return 0;
   }
 
-  private add(a: any, b: any): any {
+  add(a: any, b: any): any {
     if (typeof a === 'number' && typeof b === 'number') return a + b;
     if (typeof a === 'number' && b?.type === 'tf') {
       const newNum = polyAdd(polyScale(b.den, a), b.num);
@@ -303,7 +303,7 @@ export class MatlabInterpreter {
     return 0;
   }
 
-  private subtract(a: any, b: any): any {
+  subtract(a: any, b: any): any {
     return this.add(a, this.multiply(-1, b));
   }
 
