@@ -11,8 +11,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { 
   Play, Download, Terminal, 
   Activity, Compass, Radio, BarChart3, Crosshair, 
-  Sparkles, SlidersHorizontal, Code2, Calculator, CheckCircle2, AlertCircle,
-  Sliders, ChevronUp, ChevronDown
+  SlidersHorizontal, Code2, Calculator, CheckCircle2, AlertCircle,
+  Sliders, ChevronUp, ChevronDown, ArrowRight, ArrowLeft
 } from 'lucide-react';
 
 const interpreter = new MatlabInterpreter();
@@ -85,6 +85,9 @@ export const App: React.FC = () => {
   // Input Mode: 'formula' (zero-code visual) vs 'code' (MATLAB script)
   const [inputMode, setInputMode] = useState<'formula' | 'code'>('formula');
 
+  // Mobile View Tab: 'editor' (formula/params) vs 'plot' (canvas graph)
+  const [mobileTab, setMobileTab] = useState<'editor' | 'plot'>('editor');
+
   // Formula inputs
   const [formulaNum, setFormulaNum] = useState<string>('1');
   const [formulaDen, setFormulaDen] = useState<string>('(s + 1)^2 * (s^2 + 2*s + 5)');
@@ -106,7 +109,7 @@ export const App: React.FC = () => {
   const [sensitivityR, setSensitivityR] = useState<number>(0.1288);
   const [tEnd, setTEnd] = useState<number>(10);
 
-  // Terminal Console visibility toggle (default collapsed in Formula mode)
+  // Terminal Console visibility toggle
   const [isConsoleOpen, setIsConsoleOpen] = useState<boolean>(false);
 
   const [commandInput, setCommandInput] = useState<string>('');
@@ -114,10 +117,10 @@ export const App: React.FC = () => {
     {
       id: 'init-1',
       type: 'info',
-      text: '系統已就緒。可直接調整增益 K、感度圓 r₀ 或輸入方程式即刻生圖。'
+      text: '系統已就緒。可直接調整增益 K、輸入方程式或點選考題即刻生圖。'
     }
   ]);
-  const [variables, setVariables] = useState<Record<string, any>>({});
+  const [, setVariables] = useState<Record<string, any>>({});
   const consoleBottomRef = useRef<HTMLDivElement | null>(null);
 
   // Parse formula inputs directly
@@ -187,6 +190,8 @@ export const App: React.FC = () => {
     setFormulaDen(p.den);
     setActiveTab(p.tab);
     applyFormula(p.num, p.den);
+    // On mobile, immediately show plot when preset clicked
+    setMobileTab('plot');
   };
 
   // Execute single command in REPL
@@ -256,27 +261,29 @@ export const App: React.FC = () => {
   const zeta = wn > 1e-6 && dominantPole ? -dominantPole.re / wn : 0;
   const isClosedLoopStable = closedLoopPoles.every(p => p.re < 0);
 
-  // Derived properties from currentTF
-  const poles = currentTF.poles || [];
-  const zeros = currentTF.zeros || [];
-  const systemOrder = currentTF.den.length - 1;
-  const numZeros = currentTF.num.length - 1;
-  const originPoles = poles.filter(p => Math.hypot(p.re, p.im) < 1e-4).length;
+  const plotTabNames: Record<PlotType, string> = {
+    rlocus: '根軌跡',
+    bode: '波德圖',
+    nyquist: '奈氏圖',
+    step: '階躍響應',
+    pzmap: '極零點分佈',
+    nichols: '尼克爾斯'
+  };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-      {/* Top Navbar */}
-      <header className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-5 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-md shadow-sky-900/30">
+    <div className="flex flex-col h-[100dvh] w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
+      {/* Top Navbar (Solid Colors, Zero Gradients, Responsive) */}
+      <header className="h-13 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-5 flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white text-sm">
             G(s)
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-base tracking-tight text-white">自動控制全能繪圖工作室</span>
-              <span className="text-[10px] bg-emerald-950 border border-emerald-600 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-semibold">直覺免指令版</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-sm md:text-base tracking-tight text-white">自控線上模擬器</span>
+              <span className="text-[10px] bg-slate-800 border border-slate-700 text-sky-400 px-1.5 py-0.2 rounded font-mono hidden sm:inline">直覺免指令版</span>
             </div>
-            <p className="text-[11px] text-slate-400">免記 MATLAB 指令，直接輸入方程式或調校 K 值即刻繪圖</p>
+            <p className="text-[10px] text-slate-400 hidden md:block">直接輸入方程式或調校 K 值即刻繪圖</p>
           </div>
         </div>
 
@@ -284,25 +291,27 @@ export const App: React.FC = () => {
         <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
           <button
             onClick={() => setInputMode('formula')}
-            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-md text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
               inputMode === 'formula'
-                ? 'bg-sky-600 text-white shadow-sm'
+                ? 'bg-sky-600 text-white'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Calculator className="w-3.5 h-3.5" />
-            📐 直覺方程式模式 (推薦)
+            <span className="hidden sm:inline">直覺方程式</span>
+            <span className="sm:hidden">方程式</span>
           </button>
           <button
             onClick={() => setInputMode('code')}
-            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-md text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
               inputMode === 'code'
-                ? 'bg-sky-600 text-white shadow-sm'
+                ? 'bg-sky-600 text-white'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Code2 className="w-3.5 h-3.5" />
-            💻 MATLAB 代碼模式
+            <span className="hidden sm:inline">MATLAB 腳本</span>
+            <span className="sm:hidden">腳本</span>
           </button>
         </div>
 
@@ -310,36 +319,68 @@ export const App: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={exportPlot}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md border border-slate-700 transition-all shadow-sm"
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded border border-slate-700 transition-all"
+            title="匯出圖表 PNG"
           >
             <Download className="w-3.5 h-3.5 text-sky-400" />
-            匯出圖表 (PNG)
+            <span className="hidden sm:inline">匯出圖表</span>
           </button>
         </div>
       </header>
 
-      {/* Main Workspace (Split View) */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel: Equation Inputs or MATLAB Script */}
-        <div className="w-[430px] border-r border-slate-800 flex flex-col bg-slate-900/50 flex-shrink-0 overflow-y-auto">
+      {/* Mobile View Tab Switcher (Visible strictly on mobile < md) */}
+      <div className="md:hidden flex items-center bg-slate-900 border-b border-slate-800 p-1 flex-shrink-0">
+        <button
+          onClick={() => setMobileTab('editor')}
+          className={`flex-1 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+            mobileTab === 'editor'
+              ? 'bg-sky-600 text-white'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          方程式與參數
+        </button>
+        <button
+          onClick={() => setMobileTab('plot')}
+          className={`flex-1 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+            mobileTab === 'plot'
+              ? 'bg-sky-600 text-white'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5" />
+          即時圖表視窗 ({plotTabNames[activeTab]})
+        </button>
+      </div>
+
+      {/* Main Workspace (Split View on Desktop, Tabbed on Mobile) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* ================= LEFT PANEL: Inputs & Parameters ================= */}
+        <div 
+          className={`
+            w-full md:w-[380px] lg:w-[420px] border-r border-slate-800 flex flex-col bg-slate-900/60 flex-shrink-0 overflow-y-auto
+            ${mobileTab === 'editor' ? 'flex' : 'hidden md:flex'}
+          `}
+        >
           {inputMode === 'formula' ? (
             /* ================= MODE 1: VISUAL FORMULA MODE ================= */
-            <div className="p-4 space-y-4 flex flex-col">
+            <div className="p-3 md:p-4 space-y-3 flex flex-col pb-16 md:pb-4">
               {/* Card 1: Direct Equation Input */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2.5">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-4 h-4" />
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
                     輸入系統轉移函數 G(s)
                   </span>
-                  <span className="text-[11px] text-slate-500">支援因式與多項式</span>
+                  <span className="text-[10px] text-slate-500 font-mono">支援因式與次方 (s+1)^2</span>
                 </div>
 
                 {/* Numerator */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <label className="font-semibold text-slate-300">分子多項式 N(s) :</label>
-                    <span className="text-[10px] text-slate-500">如: 10, s+2, 5*(s+1)</span>
+                    <span className="text-[10px] text-slate-500">如: 1, 10*(s+2)</span>
                   </div>
                   <input
                     type="text"
@@ -349,21 +390,21 @@ export const App: React.FC = () => {
                       applyFormula(e.target.value, formulaDen);
                     }}
                     placeholder="例如: 10 * (s + 2) 或 25"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-sky-300 outline-none transition-all"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-sky-300 outline-none transition-all select-text"
                   />
                 </div>
 
                 {/* Fraction Divider */}
                 <div className="relative py-0.5 flex items-center justify-center">
-                  <div className="w-full border-t-2 border-slate-700"></div>
-                  <span className="absolute bg-slate-900 px-2 text-[10px] text-slate-500 font-bold uppercase">除以 (Over)</span>
+                  <div className="w-full border-t border-slate-700"></div>
+                  <span className="absolute bg-slate-900 px-2 text-[9px] text-slate-500 font-bold uppercase">除以 (Over)</span>
                 </div>
 
                 {/* Denominator */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <label className="font-semibold text-slate-300">分母多項式 D(s) :</label>
-                    <span className="text-[10px] text-slate-500">如: s*(s+2)*(s+4), s^2+4s+13</span>
+                    <span className="text-[10px] text-slate-500">如: s*(s+2)*(s+4)</span>
                   </div>
                   <input
                     type="text"
@@ -372,28 +413,28 @@ export const App: React.FC = () => {
                       setFormulaDen(e.target.value);
                       applyFormula(formulaNum, e.target.value);
                     }}
-                    placeholder="例如: s * (s + 2) * (s + 4)"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-emerald-300 outline-none transition-all"
+                    placeholder="例如: (s + 1)^2 * (s^2 + 2*s + 5)"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-sky-300 outline-none transition-all select-text"
                   />
                 </div>
 
                 {/* Error Banner */}
                 {formulaError && (
-                  <div className="flex items-center gap-2 p-2 bg-rose-950/60 border border-rose-800 rounded text-rose-300 text-xs">
+                  <div className="flex items-center gap-2 p-2 bg-red-950/80 border border-red-800 rounded text-red-300 text-xs">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     <span>{formulaError}</span>
                   </div>
                 )}
               </div>
 
-              {/* Card 2: Interactive Gain K & Parameter Tuning (Left Panel Mirror) */}
-              <div className="bg-slate-900 border border-pink-900/40 rounded-xl p-4 shadow-sm space-y-3">
+              {/* Card 2: Interactive Gain K & System Specs (4-Color Slate & Sky Blue) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2.5">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-pink-400 flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4" />
-                    🎛️ 迴路增益 K 即時調整
+                  <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5" />
+                    迴路增益 K 即時調整
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isClosedLoopStable ? "bg-emerald-950 text-emerald-400 border border-emerald-700" : "bg-rose-950 text-rose-400 border border-rose-700"}`}>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isClosedLoopStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
                     {isClosedLoopStable ? "閉迴路穩定" : "閉迴路不穩定"}
                   </span>
                 </div>
@@ -401,7 +442,7 @@ export const App: React.FC = () => {
                 {/* K Slider and Direct Input */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 font-semibold">設定增益 K:</span>
+                    <span className="text-slate-300 font-semibold">增益值 K:</span>
                     <div className="flex items-center gap-1">
                       <span className="text-slate-400 font-mono text-[11px]">K =</span>
                       <input
@@ -411,7 +452,7 @@ export const App: React.FC = () => {
                         step="0.1"
                         value={gainK}
                         onChange={(e) => setGainK(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                        className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-center font-mono text-pink-400 font-bold text-xs outline-none focus:border-pink-500"
+                        className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-center font-mono text-sky-400 font-bold text-xs outline-none focus:border-sky-500 select-text"
                       />
                     </div>
                   </div>
@@ -423,7 +464,7 @@ export const App: React.FC = () => {
                     step="0.1"
                     value={gainK}
                     onChange={(e) => setGainK(parseFloat(e.target.value))}
-                    className="w-full accent-pink-500 cursor-pointer h-2 bg-slate-950 rounded-lg"
+                    className="w-full accent-sky-500 cursor-pointer h-2 bg-slate-950 rounded-lg"
                   />
 
                   {/* K Quick Buttons */}
@@ -434,7 +475,7 @@ export const App: React.FC = () => {
                         onClick={() => setGainK(kv)}
                         className={`flex-1 py-1 rounded text-[11px] font-mono border transition-all ${
                           gainK === kv
-                            ? 'bg-pink-600 text-white border-pink-500 font-bold'
+                            ? 'bg-sky-600 text-white border-sky-500 font-bold'
                             : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
                         }`}
                       >
@@ -445,10 +486,10 @@ export const App: React.FC = () => {
                 </div>
 
                 {/* Closed Loop Specs at this K */}
-                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80 space-y-1 text-xs">
+                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1 text-xs">
                   <div className="flex justify-between text-slate-400">
                     <span>阻尼比 ζ:</span>
-                    <strong className="text-emerald-400 font-mono">{zeta.toFixed(3)}</strong>
+                    <strong className="text-sky-400 font-mono">{zeta.toFixed(3)}</strong>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>自然頻率 ωn:</span>
@@ -462,7 +503,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* Card 3: Quick Click Exam Presets */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-2">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-sm space-y-2">
                 <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 border-b border-slate-800 pb-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
                   點選經典歷屆考題快速帶入
@@ -475,27 +516,41 @@ export const App: React.FC = () => {
                       className="w-full text-left p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-sky-500 text-xs transition-all group"
                     >
                       <div className="font-semibold text-slate-200 group-hover:text-sky-400">{p.title}</div>
-                      <div className="font-mono text-[10px] text-slate-500 truncate mt-0.5">
+                      <div className="font-mono text-[10px] text-slate-400 truncate mt-0.5">
                         G(s) = ({p.num}) / ({p.den})
                       </div>
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Mobile Only: Button to jump to plot */}
+              <div className="md:hidden pt-2">
+                <button
+                  onClick={() => setMobileTab('plot')}
+                  className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <span>查看即時圖表視窗</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ) : (
             /* ================= MODE 2: MATLAB CODE SCRIPT MODE ================= */
-            <div className="flex flex-col h-full">
+            <div className="flex flex-col h-full pb-16 md:pb-0">
               <div className="h-9 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
                 <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                  MATLAB 腳本編輯 (main.m)
+                  MATLAB 腳本 (main.m)
                 </span>
                 <button
-                  onClick={() => runScript()}
+                  onClick={() => {
+                    runScript();
+                    setMobileTab('plot');
+                  }}
                   className="flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] px-2.5 py-1 rounded"
                 >
-                  <Play className="w-3 h-3 fill-current" /> 執行腳本
+                  <Play className="w-3 h-3 fill-current" /> 執行生圖
                 </button>
               </div>
 
@@ -507,10 +562,11 @@ export const App: React.FC = () => {
                     if (e.shiftKey && e.key === 'Enter') {
                       e.preventDefault();
                       runScript();
+                      setMobileTab('plot');
                     }
                   }}
                   spellCheck={false}
-                  className="w-full h-full bg-transparent text-sky-200 outline-none resize-none leading-relaxed font-mono"
+                  className="w-full h-full bg-transparent text-sky-200 outline-none resize-none leading-relaxed font-mono select-text"
                   placeholder="% 在此輸入 MATLAB 程式碼"
                 />
               </div>
@@ -537,87 +593,100 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Right Panel: Figure Studio & Permanent Parameters Bar */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-slate-950">
-          {/* Top 5 Plot Switcher Tabs */}
-          <div className="h-12 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 mr-1 select-none">選擇圖表:</span>
+        {/* ================= RIGHT PANEL: Figure Studio & Parameter Bar ================= */}
+        <div 
+          className={`
+            flex-1 flex flex-col overflow-hidden bg-slate-950
+            ${mobileTab === 'plot' ? 'flex' : 'hidden md:flex'}
+          `}
+        >
+          {/* Top 5 Plot Switcher Tabs (Scrollable on Mobile) */}
+          <div className="h-11 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 md:px-4 flex-shrink-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap scrollbar-none py-1">
               <button
                 onClick={() => setActiveTab('rlocus')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'rlocus'
-                    ? 'bg-sky-600 text-white shadow-md'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <Crosshair className="w-3.5 h-3.5" />
-                根軌跡 (Root Locus)
+                根軌跡
               </button>
 
               <button
                 onClick={() => setActiveTab('bode')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'bode'
-                    ? 'bg-sky-600 text-white shadow-md'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <Activity className="w-3.5 h-3.5" />
-                波德圖 (Bode Plot)
+                波德圖
               </button>
 
               <button
                 onClick={() => setActiveTab('nyquist')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'nyquist'
-                    ? 'bg-sky-600 text-white shadow-md'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <Compass className="w-3.5 h-3.5" />
-                奈氏圖 (Nyquist Plot)
+                奈氏圖
               </button>
 
               <button
                 onClick={() => setActiveTab('step')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'step'
-                    ? 'bg-sky-600 text-white shadow-md'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
-                階躍響應 (Step Response)
+                階躍響應
               </button>
 
               <button
                 onClick={() => setActiveTab('pzmap')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded text-xs font-semibold transition-all ${
                   activeTab === 'pzmap'
-                    ? 'bg-sky-600 text-white shadow-md'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
                 <Radio className="w-3.5 h-3.5" />
-                極零點分佈 (PZ-Map)
+                極零點
               </button>
             </div>
 
-            {/* Model Badge */}
-            <div className="flex items-center gap-2 bg-slate-950 px-3 py-1 rounded border border-slate-800 text-xs font-mono">
-              <span className="text-slate-400">目前繪圖受控廠:</span>
-              <span className="text-sky-400 font-bold">K · G(s)</span>
+            {/* Mobile Back Button or Desktop Model Badge */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setMobileTab('editor')}
+                className="md:hidden flex items-center gap-1 text-[11px] bg-slate-800 text-sky-400 px-2 py-1 rounded border border-slate-700"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                改方程式
+              </button>
+              <div className="hidden lg:flex items-center gap-1.5 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800 text-xs font-mono">
+                <span className="text-slate-400">目前繪圖:</span>
+                <span className="text-sky-400 font-bold">K · G(s)</span>
+              </div>
             </div>
           </div>
 
-          {/* ================= PERMANENT TOP PARAMETER CONTROL BAR ================= */}
-          <div className="h-11 bg-slate-900/90 border-b border-slate-800 px-4 flex items-center justify-between text-xs flex-shrink-0">
-            {/* Left: Loop Gain K slider + input */}
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-pink-400 whitespace-nowrap flex items-center gap-1">
+          {/* ================= PERMANENT PARAMETER BAR ================= */}
+          <div className="min-h-10 bg-slate-900/90 border-b border-slate-800 px-3 md:px-4 py-1.5 flex flex-wrap items-center justify-between text-xs flex-shrink-0 gap-2">
+            {/* Loop Gain K slider + input */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sky-400 whitespace-nowrap flex items-center gap-1 text-[11px]">
                 <Sliders className="w-3.5 h-3.5" />
-                迴路增益 K:
+                增益 K:
               </span>
               <input
                 type="number"
@@ -626,7 +695,7 @@ export const App: React.FC = () => {
                 step="0.1"
                 value={gainK}
                 onChange={e => setGainK(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                className="w-16 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-center font-mono text-pink-400 font-bold text-xs"
+                className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-sky-400 font-bold text-xs select-text"
               />
               <input
                 type="range"
@@ -635,16 +704,16 @@ export const App: React.FC = () => {
                 step="0.1"
                 value={gainK}
                 onChange={e => setGainK(parseFloat(e.target.value))}
-                className="w-36 accent-pink-500 cursor-pointer"
+                className="w-24 sm:w-32 accent-sky-500 cursor-pointer h-1.5"
               />
-              <div className="flex items-center gap-1">
-                {[0.5, 1, 5, 10, 25, 48].map(kv => (
+              <div className="hidden sm:flex items-center gap-1">
+                {[0.5, 1, 5, 10, 25].map(kv => (
                   <button
                     key={kv}
                     onClick={() => setGainK(kv)}
                     className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-all ${
                       gainK === kv
-                        ? 'bg-pink-600 text-white border-pink-500'
+                        ? 'bg-sky-600 text-white border-sky-500'
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
@@ -654,11 +723,11 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Specific controls or status */}
-            <div className="flex items-center gap-4 text-slate-300">
+            {/* Right: Specific plot controls */}
+            <div className="flex items-center gap-3 text-slate-300 text-[11px]">
               {activeTab === 'nyquist' && (
-                <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                  <span className="text-emerald-400 font-semibold whitespace-nowrap">感度圓 r₀:</span>
+                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                  <span className="text-sky-400 font-semibold whitespace-nowrap">感度圓 r₀:</span>
                   <input
                     type="number"
                     min="0.01"
@@ -666,23 +735,14 @@ export const App: React.FC = () => {
                     step="0.01"
                     value={sensitivityR}
                     onChange={e => setSensitivityR(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
-                    className="w-16 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-center font-mono text-emerald-400 text-xs"
-                  />
-                  <input
-                    type="range"
-                    min="0.01"
-                    max="1.0"
-                    step="0.005"
-                    value={sensitivityR}
-                    onChange={e => setSensitivityR(parseFloat(e.target.value))}
-                    className="w-20 accent-emerald-500 cursor-pointer"
+                    className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center font-mono text-sky-400 text-xs select-text"
                   />
                 </div>
               )}
 
               {activeTab === 'step' && (
-                <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                  <span className="text-sky-400 font-semibold whitespace-nowrap">模擬時長 tend:</span>
+                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                  <span className="text-sky-400 font-semibold whitespace-nowrap">時長:</span>
                   <input
                     type="range"
                     min="2"
@@ -690,24 +750,24 @@ export const App: React.FC = () => {
                     step="1"
                     value={tEnd}
                     onChange={e => setTEnd(parseInt(e.target.value))}
-                    className="w-24 accent-sky-500 cursor-pointer"
+                    className="w-16 accent-sky-500 cursor-pointer h-1.5"
                   />
-                  <span className="font-mono text-sky-400 font-bold w-8">{tEnd}s</span>
+                  <span className="font-mono text-sky-400 font-bold w-6">{tEnd}s</span>
                 </div>
               )}
 
-              <div className="flex items-center gap-3 text-slate-400 text-[11px]">
-                <span>阻尼比 ζ = <strong className="text-emerald-400 font-mono">{zeta.toFixed(3)}</strong></span>
-                <span>自然頻率 ωn = <strong className="text-sky-400 font-mono">{wn.toFixed(2)}</strong></span>
-                <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-emerald-950 text-emerald-400 border border-emerald-700" : "bg-rose-950 text-rose-400 border border-rose-700"}`}>
+              <div className="flex items-center gap-2 text-slate-400">
+                <span className="hidden sm:inline">ζ = <strong className="text-sky-400 font-mono">{zeta.toFixed(3)}</strong></span>
+                <span className="hidden sm:inline">ωn = <strong className="text-sky-400 font-mono">{wn.toFixed(2)}</strong></span>
+                <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
                   {isClosedLoopStable ? "閉迴路穩定" : "閉迴路不穩定"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Active Plot Canvas Area (Full Height!) */}
-          <div className="flex-1 p-3 overflow-hidden">
+          {/* Active Plot Canvas Area */}
+          <div className="flex-1 p-2 md:p-3 overflow-hidden relative">
             <ErrorBoundary fallbackTitle="圖形渲染異常">
               {activeTab === 'bode' && <BodePlot tf={currentTF} gainK={gainK} />}
               {activeTab === 'rlocus' && <RootLocusPlot tf={currentTF} gainK={gainK} setGainK={setGainK} />}
@@ -718,26 +778,26 @@ export const App: React.FC = () => {
           </div>
 
           {/* Collapsible Bottom Console */}
-          <div className={`border-t border-slate-800 flex flex-col bg-slate-900 transition-all ${isConsoleOpen ? 'h-36' : 'h-7'}`}>
+          <div className={`border-t border-slate-800 flex flex-col bg-slate-900 transition-all ${isConsoleOpen ? 'h-32' : 'h-7'}`}>
             <button
               onClick={() => setIsConsoleOpen(prev => !prev)}
-              className="h-7 px-4 bg-slate-900 hover:bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 w-full cursor-pointer select-none"
+              className="h-7 px-3 md:px-4 bg-slate-900 hover:bg-slate-800 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 w-full cursor-pointer select-none"
             >
-              <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+              <span className="font-semibold text-slate-300 flex items-center gap-1.5 text-[11px]">
                 <Terminal className="w-3.5 h-3.5 text-sky-400" />
                 系統終端輸出 (Output Log)
-                <span className="text-[10px] text-slate-500 font-normal">({isConsoleOpen ? '點擊收起' : '點擊展開'})</span>
+                <span className="text-[10px] text-slate-500 font-normal">({isConsoleOpen ? '收起' : '展開'})</span>
               </span>
               {isConsoleOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
             </button>
 
             {isConsoleOpen && (
               <>
-                <div className="flex-1 overflow-auto p-3 font-mono text-xs text-slate-300 space-y-1 bg-slate-950">
+                <div className="flex-1 overflow-auto p-2.5 font-mono text-xs text-slate-300 space-y-1 bg-slate-950">
                   {consoleLogs.map(log => (
-                    <div key={log.id} className="whitespace-pre-wrap leading-relaxed">
+                    <div key={log.id} className="whitespace-pre-wrap leading-relaxed text-[11px]">
                       {log.type === 'command' && <span className="text-sky-400 font-bold">{log.text}</span>}
-                      {log.type === 'error' && <span className="text-rose-400 font-semibold">{log.text}</span>}
+                      {log.type === 'error' && <span className="text-red-400 font-semibold">{log.text}</span>}
                       {log.type === 'info' && <span className="text-slate-400 italic">{log.text}</span>}
                       {log.type === 'output' && <span className="text-slate-200">{log.text}</span>}
                     </div>
@@ -752,7 +812,7 @@ export const App: React.FC = () => {
                     value={commandInput}
                     onChange={e => setCommandInput(e.target.value)}
                     placeholder="可輸入 MATLAB 指令，例如 damp(G), margin(G)"
-                    className="flex-1 bg-transparent border-none text-xs text-slate-100 font-mono focus:outline-none"
+                    className="flex-1 bg-transparent border-none text-xs text-slate-100 font-mono focus:outline-none select-text"
                   />
                 </form>
               </>

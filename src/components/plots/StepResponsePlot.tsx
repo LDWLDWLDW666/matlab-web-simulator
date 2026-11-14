@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
 import { simulateStepResponse, feedback, createTF, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
+import { useCanvasTouchPanZoom } from '../../utils/useCanvasTouch';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
@@ -30,6 +31,17 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Mobile Touch Pan & Pinch Zoom Hook
+  useCanvasTouchPanZoom({
+    canvasRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    minZoom: 0.1,
+    maxZoom: 50,
+  });
 
   const handleReset = () => {
     setZoom(1.0);
@@ -99,35 +111,41 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     const W = rect.width;
     const H = rect.height;
 
+    // Background (Slate Dark)
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, W, H);
 
-    const margin = { top: 35, right: 40, bottom: 45, left: 65 };
+    const margin = { 
+      left: Math.min(50, Math.max(35, W * 0.1)), 
+      right: 25, 
+      top: 25, 
+      bottom: 35 
+    };
     const plotW = W - margin.left - margin.right;
     const plotH = H - margin.top - margin.bottom;
 
-    const baseTMax = t[t.length - 1] || 10;
-    const yMinRaw = Math.min(...y, 0);
-    const yMaxRaw = Math.max(...y, 1.2 * specs.yss, 1);
-    const baseYMin = Math.floor(yMinRaw * 10) / 10;
-    const baseYMax = Math.ceil(yMaxRaw * 10) / 10;
-    const baseYRange = baseYMax - baseYMin;
+    if (plotW <= 10 || plotH <= 10) return;
 
-    // Viewport bounds
-    const ppuX = (plotW / baseTMax) * zoom;
-    const ppuY = (plotH / baseYRange) * zoom;
+    const maxT = t.length > 0 ? t[t.length - 1] : 10;
+    const yMaxVal = Math.max(1.5, ...y.filter(v => isFinite(v)));
+    const yMinVal = Math.min(0, ...y.filter(v => isFinite(v)));
+
+    const ySpan = Math.max(0.5, yMaxVal - yMinVal) * 1.25;
+    const tSpan = Math.max(1, maxT);
+
+    const ppuX = (plotW / tSpan) * zoom;
+    const ppuY = (plotH / ySpan) * zoom;
 
     const originX = margin.left + pan.x;
-    const originY = margin.top + (1 - (0 - baseYMin) / baseYRange) * plotH * zoom + pan.y;
+    const originY = margin.top + plotH - ((0 - yMinVal) / ySpan) * plotH * zoom + pan.y;
 
-    const toPxX = (currT: number) => originX + currT * ppuX;
-    const toPxY = (currY: number) => originY - currY * ppuY;
+    const toPxX = (time: number) => originX + time * ppuX;
+    const toPxY = (val: number) => originY - val * ppuY;
 
-    // Visible ranges in math units
     const visibleMinT = Math.max(0, (margin.left - originX) / ppuX);
     const visibleMaxT = (margin.left + plotW - originX) / ppuX;
-    const visibleMaxY = (originY - margin.top) / ppuY;
     const visibleMinY = (originY - (margin.top + plotH)) / ppuY;
+    const visibleMaxY = (originY - margin.top) / ppuY;
 
     // Clip to plot area
     ctx.save();
@@ -135,51 +153,45 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
     ctx.rect(margin.left, margin.top, plotW, plotH);
     ctx.clip();
 
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(margin.left, margin.top, plotW, plotH);
+    // Subtle Grid (Slate)
+    const tTicks = getNiceTicks(visibleMinT, visibleMaxT, Math.max(4, Math.floor(plotW / 80)));
+    const yTicks = getNiceTicks(visibleMinY, visibleMaxY, Math.max(4, Math.floor(plotH / 50)));
 
-    // Dynamic nice ticks
-    const tTicks = getNiceTicks(visibleMinT, visibleMaxT, Math.floor(plotW / 80));
-    const yTicks = getNiceTicks(visibleMinY, visibleMaxY, Math.floor(plotH / 50));
-
-    // Grid lines
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
-
-    tTicks.forEach(val => {
-      const xPos = toPxX(val);
+    tTicks.forEach(tt => {
+      const x = toPxX(tt);
       ctx.beginPath();
-      ctx.moveTo(xPos, margin.top);
-      ctx.lineTo(xPos, margin.top + plotH);
+      ctx.moveTo(x, margin.top);
+      ctx.lineTo(x, margin.top + plotH);
       ctx.stroke();
     });
 
-    yTicks.forEach(val => {
-      const yPos = toPxY(val);
+    yTicks.forEach(yy => {
+      const yPos = toPxY(yy);
       ctx.beginPath();
       ctx.moveTo(margin.left, yPos);
       ctx.lineTo(margin.left + plotW, yPos);
       ctx.stroke();
     });
 
-    // Steady state line yss
-    const yssPx = toPxY(specs.yss);
-    ctx.strokeStyle = '#e2e8f0';
+    // Steady State target line (1.0 or yss)
+    const yssY = toPxY(specs.yss);
+    ctx.strokeStyle = '#475569';
     ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(margin.left, yssPx);
-    ctx.lineTo(margin.left + plotW, yssPx);
+    ctx.moveTo(margin.left, yssY);
+    ctx.lineTo(margin.left + plotW, yssY);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 2% Settling envelope band
+    // 2% Settling Band
     const yssPlus = toPxY(specs.yss * 1.02);
     const yssMinus = toPxY(specs.yss * 0.98);
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.05)';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.05)';
     ctx.fillRect(margin.left, Math.min(yssPlus, yssMinus), plotW, Math.abs(yssMinus - yssPlus));
 
-    // Response Curve
+    // Response Curve (Sky Blue)
     ctx.beginPath();
     for (let i = 0; i < t.length; i++) {
       const xPos = toPxX(t[i]);
@@ -188,15 +200,15 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       else ctx.lineTo(xPos, yPos);
     }
     ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Annotate Peak Time tp & Mp
+    // Annotate Peak Time tp & Mp (Sky Blue)
     if (specs.tp > 0 && specs.Mp > 0) {
       const tpPx = toPxX(specs.tp);
       const ypPx = toPxY(specs.yss * (1 + specs.Mp / 100));
 
-      ctx.strokeStyle = '#f59e0b';
+      ctx.strokeStyle = '#38bdf8';
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(tpPx, margin.top + plotH);
@@ -206,21 +218,20 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = '#f59e0b';
+      ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
-      ctx.arc(tpPx, ypPx, 5, 0, Math.PI * 2);
+      ctx.arc(tpPx, ypPx, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#f59e0b';
       ctx.font = '600 11px Inter, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`Peak: ${specs.Mp.toFixed(1)}% (tp = ${specs.tp.toFixed(2)}s)`, tpPx + 8, ypPx - 8);
+      ctx.fillText(`Peak: ${specs.Mp.toFixed(1)}% (tp = ${specs.tp.toFixed(2)}s)`, tpPx + 6, ypPx - 6);
     }
 
-    // Annotate Settling Time ts
+    // Annotate Settling Time ts (Slate Neutral)
     if (specs.ts > 0) {
       const tsPx = toPxX(specs.ts);
-      ctx.strokeStyle = '#10b981';
+      ctx.strokeStyle = '#94a3b8';
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(tsPx, margin.top);
@@ -228,67 +239,67 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = '#10b981';
-      ctx.font = '600 11px Inter, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '600 10px Inter, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`ts = ${specs.ts.toFixed(2)}s`, tsPx, margin.top + 16);
+      ctx.fillText(`ts = ${specs.ts.toFixed(2)}s`, tsPx, margin.top + 14);
     }
 
     ctx.restore(); // Restore clip
 
-    // Draw Labels outside
+    // Draw Labels outside (Slate)
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px "Fira Code", monospace';
+    ctx.font = '10px "Fira Code", monospace';
 
-    tTicks.forEach(val => {
-      const xPos = toPxX(val);
-      if (xPos >= margin.left && xPos <= margin.left + plotW) {
+    tTicks.forEach(tt => {
+      const x = toPxX(tt);
+      if (x >= margin.left && x <= margin.left + plotW) {
         ctx.textAlign = 'center';
-        ctx.fillText(formatTick(val), xPos, margin.top + plotH + 18);
+        ctx.fillText(formatTick(tt), x, margin.top + plotH + 15);
       }
     });
 
-    yTicks.forEach(val => {
-      const yPos = toPxY(val);
+    yTicks.forEach(yy => {
+      const yPos = toPxY(yy);
       if (yPos >= margin.top && yPos <= margin.top + plotH) {
         ctx.textAlign = 'right';
-        ctx.fillText(formatTick(val), margin.left - 8, yPos + 4);
+        ctx.fillText(formatTick(yy), margin.left - 6, yPos + 3);
       }
     });
 
-    // Border
+    // Axis titles
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Time (seconds)', margin.left + plotW / 2, H - 6);
+
+    ctx.save();
+    ctx.translate(14, margin.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Amplitude y(t)', 0, 0);
+    ctx.restore();
+
+    // Border (Slate)
     ctx.strokeStyle = '#334155';
     ctx.strokeRect(margin.left, margin.top, plotW, plotH);
-
-    // Axis Labels
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '12px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Time (seconds)', margin.left + plotW / 2, H - 10);
 
   }, [t, y, specs, zoom, pan]);
 
   return (
     <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-xs">
-        <div className="flex items-center gap-4">
+      {/* Top Banner */}
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
           <span className="font-semibold text-slate-200">Step Response (階躍響應)</span>
           <span className="text-sky-400">― 輸出 y(t)</span>
-          <span className="text-slate-400">- - 穩態值 yss</span>
-          <span className="text-emerald-400">±2% 誤差帶</span>
+          <span className="text-slate-400">- - 目標值 1.0</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-[11px]">
           <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            上升時間 tr = <strong className="text-sky-400">{specs.tr.toFixed(2)}s</strong>
+            超調 Mp = <strong className="text-sky-400 font-mono">{specs.Mp > 0 ? `${specs.Mp.toFixed(1)}%` : '0%'}</strong>
           </span>
           <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            峰值時間 tp = <strong className="text-amber-400">{specs.tp.toFixed(2)}s</strong>
-          </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            超調量 Mp = <strong className="text-pink-400">{specs.Mp.toFixed(1)}%</strong>
-          </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            調節時間 ts = <strong className="text-emerald-400">{specs.ts.toFixed(2)}s</strong>
+            調節時間 ts = <strong className="text-sky-400 font-mono">{specs.ts.toFixed(2)}s</strong>
           </span>
         </div>
       </div>
@@ -300,21 +311,25 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas ref={canvasRef} className="w-full h-full block" />
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block" 
+          style={{ touchAction: 'none' }}
+        />
 
         {/* Floating Zoom Toolbar */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
           <button
             onClick={() => handleZoom(1.3)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
-            title="放大響應圖"
+            title="放大"
           >
             <ZoomIn className="w-4 h-4 text-sky-400" />
           </button>
           <button
             onClick={() => handleZoom(0.77)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
-            title="縮小響應圖"
+            title="縮小"
           >
             <ZoomOut className="w-4 h-4 text-sky-400" />
           </button>
@@ -324,8 +339,8 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            重設視角
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">重設</span>
           </button>
           <div className="text-[10px] text-slate-400 font-mono px-1">
             {Math.round(zoom * 100)}%
@@ -333,9 +348,10 @@ export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => 
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-3 left-4 flex items-center gap-1 text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 pointer-events-none">
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
           <Move className="w-3 h-3 text-sky-400" />
-          <span>滾輪縮放響應圖 • 滑鼠拖曳任意移動時間與幅值</span>
+          <span className="hidden sm:inline">滾輪/雙指縮放 • 滑鼠/單指拖曳平移</span>
+          <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>
       </div>
     </div>

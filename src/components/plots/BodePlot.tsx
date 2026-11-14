@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
 import { computeFrequencySpecs, freqResp, unwrapPhase, createTF, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
+import { useCanvasTouchBode } from '../../utils/useCanvasTouch';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
@@ -28,6 +29,17 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
   const [panX, setPanX] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<number>(0);
+
+  // Mobile Touch Pan & Pinch Zoom Hook
+  useCanvasTouchBode({
+    canvasRef,
+    zoom,
+    setZoom,
+    panX,
+    setPanX,
+    minZoom: 0.1,
+    maxZoom: 50,
+  });
 
   const handleReset = () => {
     setZoom(1.0);
@@ -91,123 +103,146 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     const W = rect.width;
     const H = rect.height;
 
+    // Background (Slate Dark)
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, W, H);
 
-    const margin = { top: 30, right: 35, bottom: 45, left: 65 };
-    const gap = 35;
-    const subH = (H - margin.top - margin.bottom - gap) / 2;
+    const margin = { 
+      left: Math.min(50, Math.max(35, W * 0.1)), 
+      right: 20, 
+      top: 15, 
+      bottom: 25 
+    };
     const plotW = W - margin.left - margin.right;
+    const gap = 16;
+    const subH = (H - margin.top - margin.bottom - gap) / 2;
 
-    // Base frequency range
-    const baseLogMin = -2;
-    const baseLogMax = 3;
-    const totalLogSpan = baseLogMax - baseLogMin;
+    if (subH <= 10 || plotW <= 10) return;
 
-    // Viewport log bounds with zoom and pan
-    const viewLogSpan = totalLogSpan / zoom;
-    const panLogOffset = (-panX / (plotW * zoom)) * totalLogSpan;
-    const currLogMin = baseLogMin + panLogOffset;
-    const currLogMax = currLogMin + viewLogSpan;
+    // Frequency grid
+    const minDec = -2;
+    const maxDec = 3;
+    const totalDecades = maxDec - minDec;
 
-    // Sample data across visible range with padding
-    const N = 400;
-    const sampleLogMin = currLogMin - 0.5;
-    const sampleLogMax = currLogMax + 0.5;
+    const xToPx = (w: number) => {
+      const dec = Math.log10(Math.max(1e-6, w));
+      return margin.left + ((dec - minDec) / totalDecades) * plotW * zoom + panX;
+    };
 
+    const pxToW = (px: number) => {
+      const frac = (px - margin.left - panX) / (plotW * zoom);
+      return Math.pow(10, minDec + frac * totalDecades);
+    };
+
+    // Calculate sample frequencies
+    const N = Math.min(400, Math.max(150, Math.floor(plotW)));
     const freqs: number[] = [];
     const mags: number[] = [];
-    const rawPhases: number[] = [];
+    const phasesRaw: number[] = [];
+
+    const visibleWMin = pxToW(margin.left);
+    const visibleWMax = pxToW(margin.left + plotW);
+    const startW = Math.max(1e-4, Math.min(visibleWMin, 1e-2));
+    const endW = Math.max(startW * 10, Math.max(visibleWMax, 1e3));
+
+    const logS = Math.log10(startW);
+    const logE = Math.log10(endW);
 
     for (let i = 0; i <= N; i++) {
-      const logW = sampleLogMin + (i / N) * (sampleLogMax - sampleLogMin);
-      const w = Math.pow(10, logW);
+      const w = Math.pow(10, logS + (i / N) * (logE - logS));
       const resp = freqResp(effectiveTF, w);
       freqs.push(w);
       mags.push(resp.magDB);
-      rawPhases.push(resp.phaseDeg);
+      phasesRaw.push(resp.phaseDeg);
     }
-    const phases = unwrapPhase(rawPhases);
 
-    // Auto y bounds
+    const phases = unwrapPhase(phasesRaw);
+
+    // Compute Y limits for Magnitude
     const visibleMags = mags.filter((_, idx) => {
-      const logW = Math.log10(freqs[idx]);
-      return logW >= currLogMin && logW <= currLogMax;
+      const x = xToPx(freqs[idx]);
+      return x >= margin.left && x <= margin.left + plotW;
     });
+
+    let rawMagMin = visibleMags.length > 0 ? Math.min(...visibleMags) : -60;
+    let rawMagMax = visibleMags.length > 0 ? Math.max(...visibleMags) : 20;
+    if (!isFinite(rawMagMin)) rawMagMin = -80;
+    if (!isFinite(rawMagMax)) rawMagMax = 40;
+    rawMagMin = Math.min(rawMagMin, -20);
+    rawMagMax = Math.max(rawMagMax, 20);
+
+    const magMin = Math.floor(rawMagMin / 20) * 20 - 10;
+    const magMax = Math.ceil(rawMagMax / 20) * 20 + 10;
+
+    // Y limits for Phase
     const visiblePhases = phases.filter((_, idx) => {
-      const logW = Math.log10(freqs[idx]);
-      return logW >= currLogMin && logW <= currLogMax;
+      const x = xToPx(freqs[idx]);
+      return x >= margin.left && x <= margin.left + plotW;
     });
 
-    const minMagVal = visibleMags.length > 0 ? Math.min(...visibleMags) : -40;
-    const maxMagVal = visibleMags.length > 0 ? Math.max(...visibleMags) : 20;
-    const magMin = Math.floor(Math.min(minMagVal - 10, -30) / 10) * 10;
-    const magMax = Math.ceil(Math.max(maxMagVal + 10, 20) / 10) * 10;
+    let rawPhaseMin = visiblePhases.length > 0 ? Math.min(...visiblePhases) : -270;
+    let rawPhaseMax = visiblePhases.length > 0 ? Math.max(...visiblePhases) : 0;
+    if (!isFinite(rawPhaseMin)) rawPhaseMin = -360;
+    if (!isFinite(rawPhaseMax)) rawPhaseMax = 0;
+    rawPhaseMin = Math.min(rawPhaseMin, -200);
+    rawPhaseMax = Math.max(rawPhaseMax, 10);
 
-    const minPhaseVal = visiblePhases.length > 0 ? Math.min(...visiblePhases) : -270;
-    const maxPhaseVal = visiblePhases.length > 0 ? Math.max(...visiblePhases) : 0;
-    const phaseMin = Math.floor(Math.min(minPhaseVal - 20, -200) / 45) * 45;
-    const phaseMax = Math.ceil(Math.max(maxPhaseVal + 20, 0) / 45) * 45;
+    const phaseMin = Math.floor(rawPhaseMin / 45) * 45;
+    const phaseMax = Math.ceil(rawPhaseMax / 45) * 45;
 
-    const xToPx = (w: number) => margin.left + ((Math.log10(w) - currLogMin) / (currLogMax - currLogMin)) * plotW;
-    const magToPx = (m: number) => margin.top + (1 - (m - magMin) / (magMax - magMin)) * subH;
-    const phaseToPx = (p: number) => margin.top + subH + gap + (1 - (p - phaseMin) / (phaseMax - phaseMin)) * subH;
+    const magToPx = (m: number) => margin.top + subH - ((m - magMin) / (magMax - magMin)) * subH;
+    const phaseToPx = (p: number) => margin.top + subH + gap + subH - ((p - phaseMin) / (phaseMax - phaseMin)) * subH;
 
-    // Draw Subplot Helper
-    const drawSubplot = (topY: number, title: string, unit: string, yMin: number, yMax: number, toYPx: (v: number) => number, isBottom: boolean) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(margin.left, topY, plotW, subH);
-      ctx.clip();
-
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(margin.left, topY, plotW, subH);
-
-      // Y Grid
-      const yTicks = getNiceTicks(yMin, yMax, 6);
+    // Helper: Draw Subplot Frame & Grid
+    const drawSubplot = (
+      topY: number, 
+      title: string, 
+      unit: string, 
+      yMin: number, 
+      yMax: number, 
+      toYPx: (v: number) => number, 
+      isBottom: boolean
+    ) => {
+      // Decade vertical lines
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
-      yTicks.forEach(yVal => {
-        const y = toYPx(yVal);
-        ctx.beginPath();
-        ctx.moveTo(margin.left, y);
-        ctx.lineTo(margin.left + plotW, y);
-        ctx.stroke();
-      });
-
-      // Log Frequency Grid
-      const minDec = Math.floor(currLogMin);
-      const maxDec = Math.ceil(currLogMax);
-      for (let dec = minDec; dec <= maxDec; dec++) {
-        for (let mult = 1; mult < 10; mult++) {
-          const w = mult * Math.pow(10, dec);
-          const x = xToPx(w);
-          if (x < margin.left || x > margin.left + plotW) continue;
+      for (let dec = minDec - 2; dec <= maxDec + 2; dec++) {
+        const w = Math.pow(10, dec);
+        const x = xToPx(w);
+        if (x >= margin.left && x <= margin.left + plotW) {
           ctx.beginPath();
           ctx.moveTo(x, topY);
           ctx.lineTo(x, topY + subH);
-          ctx.strokeStyle = mult === 1 ? '#334155' : '#141e33';
           ctx.stroke();
         }
       }
 
-      ctx.restore();
+      // Horizontal grid lines
+      const yTicks = getNiceTicks(yMin, yMax, 5);
+      yTicks.forEach(yVal => {
+        const y = toYPx(yVal);
+        if (y >= topY && y <= topY + subH) {
+          ctx.beginPath();
+          ctx.moveTo(margin.left, y);
+          ctx.lineTo(margin.left + plotW, y);
+          ctx.stroke();
+        }
+      });
 
-      // Titles & Axis Ticks outside clip
+      // Title
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '600 12px Inter, sans-serif';
+      ctx.font = '600 11px Inter, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`${title} (${unit})`, margin.left + 8, topY + 18);
+      ctx.fillText(`${title} (${unit})`, margin.left + 8, topY + 16);
 
       // Y Labels
       ctx.fillStyle = '#64748b';
-      ctx.font = '11px "Fira Code", monospace';
+      ctx.font = '10px "Fira Code", monospace';
       ctx.textAlign = 'right';
-      const yTicksOut = getNiceTicks(yMin, yMax, 6);
-      yTicksOut.forEach(yVal => {
+      yTicks.forEach(yVal => {
         const y = toYPx(yVal);
         if (y >= topY && y <= topY + subH) {
-          ctx.fillText(formatTick(yVal), margin.left - 8, y + 4);
+          ctx.fillText(formatTick(yVal), margin.left - 6, y + 3);
         }
       });
 
@@ -218,7 +253,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
           const w = Math.pow(10, dec);
           const x = xToPx(w);
           if (x >= margin.left && x <= margin.left + plotW) {
-            ctx.fillText(`10^${dec}`, x, topY + subH + 18);
+            ctx.fillText(`10^${dec}`, x, topY + subH + 15);
           }
         }
       }
@@ -240,7 +275,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
 
     // 0 dB dashed line
     const y0 = magToPx(0);
-    ctx.strokeStyle = '#e2e8f0';
+    ctx.strokeStyle = '#475569';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(margin.left, y0);
@@ -248,7 +283,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Magnitude Curve
+    // Magnitude Curve (Sky Blue)
     ctx.beginPath();
     for (let i = 0; i < freqs.length; i++) {
       const x = xToPx(freqs[i]);
@@ -267,7 +302,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.rect(margin.left, margin.top + subH + gap, plotW, subH);
     ctx.clip();
 
-    // -180 deg line
+    // -180 deg line (Red critical line)
     const y180 = phaseToPx(-180);
     ctx.strokeStyle = '#ef4444';
     ctx.setLineDash([4, 4]);
@@ -277,7 +312,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Phase Curve
+    // Phase Curve (Slate Neutral)
     ctx.beginPath();
     for (let i = 0; i < freqs.length; i++) {
       const x = xToPx(freqs[i]);
@@ -285,7 +320,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = '#f59e0b';
+    ctx.strokeStyle = '#94a3b8';
     ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
@@ -302,16 +337,16 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // PM bar
+        // PM bar (Sky Blue)
         const yP = phaseToPx(-180 + specs.PM);
-        ctx.strokeStyle = '#22c55e';
+        ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(xG, y180);
         ctx.lineTo(xG, yP);
         ctx.stroke();
 
-        ctx.fillStyle = '#22c55e';
+        ctx.fillStyle = '#38bdf8';
         ctx.beginPath();
         ctx.arc(xG, yP, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -321,7 +356,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
     if (specs.wpc && specs.GM !== null) {
       const xP = xToPx(specs.wpc);
       if (xP >= margin.left && xP <= margin.left + plotW) {
-        ctx.strokeStyle = '#f59e0b';
+        ctx.strokeStyle = '#ef4444';
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(xP, margin.top);
@@ -329,7 +364,7 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // GM bar
+        // GM bar (Red)
         const yM = magToPx(-specs.GM);
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
@@ -345,33 +380,26 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
       }
     }
 
-    // X Axis Label
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '12px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Frequency (rad/s)', margin.left + plotW / 2, H - 8);
-
   }, [tf, zoom, panX, specs]);
 
   return (
     <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-xs">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-slate-200">Bode Diagram (波德圖)</span>
+      {/* Top Banner */}
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
+          <span className="font-semibold text-slate-200">Bode Plot (波德圖)</span>
           <span className="text-sky-400">― 幅值 (dB)</span>
-          <span className="text-amber-400">― 相位 (deg)</span>
+          <span className="text-slate-300">― 相位 (deg)</span>
+          <span className="text-red-400">- - 180°臨界</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-[11px]">
           <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            ωgc = <strong className="text-sky-400">{specs.wgc ? specs.wgc.toFixed(2) : 'N/A'}</strong> rad/s
+            PM = <strong className={specs.PM && specs.PM > 0 ? "text-sky-400" : "text-red-400"}>{specs.PM !== null ? `${specs.PM.toFixed(1)}°` : '∞'}</strong>
           </span>
           <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            PM = <strong className={specs.PM && specs.PM > 0 ? "text-emerald-400" : "text-rose-400"}>{specs.PM !== null ? `${specs.PM.toFixed(1)}°` : '∞'}</strong>
+            GM = <strong className={specs.GM && specs.GM > 0 ? "text-sky-400" : "text-red-400"}>{specs.GM !== null ? `${specs.GM.toFixed(1)} dB` : '∞'}</strong>
           </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            GM = <strong className={specs.GM && specs.GM > 0 ? "text-emerald-400" : "text-rose-400"}>{specs.GM !== null ? `${specs.GM.toFixed(1)} dB` : '∞'}</strong>
-          </span>
-          <span className={`px-2 py-0.5 rounded font-bold ${specs.isStable ? "bg-emerald-950 text-emerald-400 border border-emerald-700" : "bg-rose-950 text-rose-400 border border-rose-700"}`}>
+          <span className={`px-2 py-0.5 rounded font-bold ${specs.isStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
             {specs.isStable ? "開迴路穩定" : "開迴路不穩定"}
           </span>
         </div>
@@ -384,10 +412,14 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas ref={canvasRef} className="w-full h-full block" />
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block" 
+          style={{ touchAction: 'none' }}
+        />
 
         {/* Floating Toolbar */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
           <button
             onClick={() => handleZoom(1.3)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
@@ -408,8 +440,8 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            重設視角
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">重設</span>
           </button>
           <div className="text-[10px] text-slate-400 font-mono px-1">
             {Math.round(zoom * 100)}%
@@ -417,9 +449,10 @@ export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-2 left-4 flex items-center gap-1 text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 pointer-events-none">
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
           <Move className="w-3 h-3 text-sky-400" />
-          <span>滾輪縮放頻率座標 • 水平拖曳平移波德圖</span>
+          <span className="hidden sm:inline">滾輪/雙指縮放 • 水平拖曳平移</span>
+          <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>
       </div>
     </div>

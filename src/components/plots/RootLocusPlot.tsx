@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction, CNumber } from '../../types';
 import { computeRootLocus, findRoots, polyAdd, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
+import { useCanvasTouchPanZoom } from '../../utils/useCanvasTouch';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
@@ -23,6 +24,17 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Mobile Touch Pan & Pinch Zoom Hook
+  useCanvasTouchPanZoom({
+    canvasRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    minZoom: 0.05,
+    maxZoom: 100,
+  });
 
   const { branches, paths, asymptotes } = useMemo(() => computeRootLocus(tf), [tf]);
 
@@ -72,7 +84,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
     setZoom(prev => Math.max(0.05, Math.min(prev * factor, 100)));
   };
 
-  // Mouse Wheel Zoom (centered at mouse pointer)
+  // Mouse Wheel Zoom
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -86,7 +98,6 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
       const factor = e.deltaY < 0 ? 1.15 : 0.87;
       setZoom(prev => {
         const nextZoom = Math.max(0.05, Math.min(prev * factor, 100));
-        // Adjust pan to keep mouse position anchored
         const scaleChange = nextZoom / prev;
         setPan(p => ({
           x: mouseX - (mouseX - p.x) * scaleChange,
@@ -102,7 +113,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
 
   // Mouse Drag to Pan
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only left click
+    if (e.button !== 0) return;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
@@ -135,31 +146,27 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
     const W = rect.width;
     const H = rect.height;
 
-    // Background
+    // Background (Slate Dark)
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, W, H);
 
-    // Calculate current visible range given zoom and pan
-    const pad = 45;
+    // Padding
+    const pad = Math.min(45, Math.max(25, W * 0.08));
     const plotW = W - pad * 2;
     const plotH = H - pad * 2;
 
-    // Base coordinate transformation
     const sRange = baseRange.maxSigma - baseRange.minSigma;
     const oRange = 2 * baseRange.maxOmega;
 
-    // Pixel scale per math unit
     const ppuX = (plotW / sRange) * zoom;
     const ppuY = (plotH / oRange) * zoom;
 
-    // Center of origin (0, 0)
     const originX = pad + ((0 - baseRange.minSigma) / sRange) * plotW * zoom + pan.x;
     const originY = pad + ((baseRange.maxOmega - 0) / oRange) * plotH * zoom + pan.y;
 
     const toPxX = (sigma: number) => originX + sigma * ppuX;
     const toPxY = (omega: number) => originY - omega * ppuY;
 
-    // Math bounds of visible viewport
     const visibleMinSigma = (pad - originX) / ppuX;
     const visibleMaxSigma = (W - pad - originX) / ppuX;
     const visibleMaxOmega = (originY - pad) / ppuY;
@@ -171,14 +178,12 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
     ctx.rect(pad, pad, plotW, plotH);
     ctx.clip();
 
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(pad, pad, plotW, plotH);
+    // Subtle Grid (Slate)
+    const targetCountX = Math.max(4, Math.floor(plotW / 75));
+    const targetCountY = Math.max(4, Math.floor(plotH / 60));
+    const sigmaTicks = getNiceTicks(visibleMinSigma, visibleMaxSigma, targetCountX);
+    const omegaTicks = getNiceTicks(visibleMinOmega, visibleMaxOmega, targetCountY);
 
-    // Dynamic Nice Ticks for Sigma and Omega
-    const sigmaTicks = getNiceTicks(visibleMinSigma, visibleMaxSigma, Math.floor(plotW / 80));
-    const omegaTicks = getNiceTicks(visibleMinOmega, visibleMaxOmega, Math.floor(plotH / 60));
-
-    // Draw Grid Lines
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     sigmaTicks.forEach(s => {
@@ -201,7 +206,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
     const x0 = toPxX(0);
     const y0 = toPxY(0);
 
-    // Real Axis (sigma)
+    // Real Axis (sigma) - Slate
     ctx.strokeStyle = '#475569';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -217,11 +222,11 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
     ctx.lineTo(x0, pad + plotH);
     ctx.stroke();
 
-    // Draw Asymptotes
+    // Draw Asymptotes (Slate dashed)
     if (asymptotes.angles.length > 0) {
       const ax = toPxX(asymptotes.centroid);
       const r = Math.max(plotW, plotH) * 4;
-      ctx.strokeStyle = '#a855f7';
+      ctx.strokeStyle = '#64748b';
       ctx.setLineDash([5, 5]);
       ctx.lineWidth = 1.5;
 
@@ -235,7 +240,7 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
       ctx.setLineDash([]);
     }
 
-    // Draw Root Locus Trajectories with smooth continuous paths
+    // Draw Root Locus Trajectories with continuous paths (Sky Blue)
     ctx.strokeStyle = '#0284c7';
     ctx.lineWidth = 2.5;
     paths.forEach(path => {
@@ -245,7 +250,6 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
         const pt = path[i];
         if (!isFinite(pt.re) || !isFinite(pt.im)) continue;
 
-        // Discontinuity guard: never draw a line jumping across the real axis
         if (started && i > 0) {
           const prev = path[i - 1];
           const crossAxis = (prev.im > 0.08 && pt.im < -0.08) || (prev.im < -0.08 && pt.im > 0.08);
@@ -269,20 +273,20 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
       ctx.stroke();
     });
 
-    // Draw Open Loop Zeros (o)
+    // Draw Open Loop Zeros (o) - Sky Blue outline
     tf.zeros.forEach(z => {
       const zx = toPxX(z.re);
       const zy = toPxY(z.im);
-      ctx.strokeStyle = '#f59e0b';
+      ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2.5;
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#090d16';
       ctx.beginPath();
-      ctx.arc(zx, zy, 6, 0, Math.PI * 2);
+      ctx.arc(zx, zy, 5.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     });
 
-    // Draw Open Loop Poles (x)
+    // Draw Open Loop Poles (x) - Sky Blue
     tf.poles.forEach(p => {
       const px = toPxX(p.re);
       const py = toPxY(p.im);
@@ -296,42 +300,40 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
       ctx.stroke();
     });
 
-    // Draw Current Closed Loop Poles for gain K (magenta squares)
+    // Draw Current Closed Loop Poles for gain K (Sky Blue filled square with white border)
     closedLoopPoles.forEach(clp => {
       const cx = toPxX(clp.re);
       const cy = toPxY(clp.im);
-      ctx.fillStyle = '#ec4899';
+      ctx.fillStyle = '#0284c7';
       ctx.fillRect(cx - 5, cy - 5, 10, 10);
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = '#f8fafc';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(cx - 5, cy - 5, 10, 10);
     });
 
     ctx.restore(); // Restore clipping
 
-    // Draw Tick Labels outside / near axes
+    // Draw Tick Labels (Slate)
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px "Fira Code", monospace';
+    ctx.font = '10px "Fira Code", monospace';
 
-    // Sigma tick labels along bottom
     sigmaTicks.forEach(s => {
       const x = toPxX(s);
       if (x >= pad && x <= pad + plotW) {
         ctx.textAlign = 'center';
-        ctx.fillText(formatTick(s), x, H - pad + 18);
+        ctx.fillText(formatTick(s), x, H - pad + 15);
       }
     });
 
-    // Omega tick labels along left
     omegaTicks.forEach(o => {
       const y = toPxY(o);
       if (y >= pad && y <= pad + plotH) {
         ctx.textAlign = 'right';
-        ctx.fillText(o === 0 ? '0' : (o > 0 ? `+j${formatTick(o)}` : `-j${formatTick(Math.abs(o))}`), pad - 8, y + 4);
+        ctx.fillText(o === 0 ? '0' : (o > 0 ? `+j${formatTick(o)}` : `-j${formatTick(Math.abs(o))}`), pad - 6, y + 3);
       }
     });
 
-    // Outer border
+    // Outer border (Slate)
     ctx.strokeStyle = '#334155';
     ctx.strokeRect(pad, pad, plotW, plotH);
 
@@ -348,26 +350,26 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
 
   return (
     <div ref={containerRef} className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
-      {/* Top Banner */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-xs">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-slate-200">Root Locus (根軌跡圖)</span>
+      {/* Top Banner (Responsive & Minimalist 4-color) */}
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
+          <span className="font-semibold text-slate-200">Root Locus (根軌跡)</span>
           <span className="text-sky-400">✕ 開迴路極點</span>
-          <span className="text-amber-400">○ 開迴路零點</span>
-          <span className="text-pink-400">■ 閉迴路極點 (K)</span>
-          <span className="text-purple-400">- - 漸近線</span>
+          <span className="text-sky-300">○ 零點</span>
+          <span className="text-white font-mono">■ 閉極點 (K)</span>
+          <span className="text-slate-400">- - 漸近線</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            漸近線交點 σa = <strong className="text-purple-400">{asymptotes.centroid.toFixed(2)}</strong>
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 font-mono">
+            σa = {asymptotes.centroid.toFixed(2)}
           </span>
-          <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-emerald-950 text-emerald-400 border border-emerald-700" : "bg-rose-950 text-rose-400 border border-rose-700"}`}>
+          <span className={`px-2 py-0.5 rounded font-bold ${isClosedLoopStable ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
             {isClosedLoopStable ? `閉迴路穩定 (K=${gainK.toFixed(2)})` : `閉迴路不穩定 (K=${gainK.toFixed(2)})`}
           </span>
         </div>
       </div>
 
-      {/* Canvas Area with Pan/Zoom Mouse Handlers */}
+      {/* Canvas Area with Mouse and Touch pan/zoom */}
       <div 
         className={`flex-1 w-full relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
@@ -375,21 +377,25 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas ref={canvasRef} className="w-full h-full block" />
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block" 
+          style={{ touchAction: 'none' }}
+        />
 
         {/* Floating Zoom & Pan Toolbar */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
           <button
             onClick={() => handleZoom(1.3)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
-            title="放大 (或使用滑鼠滾輪)"
+            title="放大 (滾輪或雙指張開)"
           >
             <ZoomIn className="w-4 h-4 text-sky-400" />
           </button>
           <button
             onClick={() => handleZoom(0.77)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
-            title="縮小 (或使用滑鼠滾輪)"
+            title="縮小 (滾輪或雙指捏合)"
           >
             <ZoomOut className="w-4 h-4 text-sky-400" />
           </button>
@@ -399,8 +405,8 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            重設視角
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">重設</span>
           </button>
           <div className="text-[10px] text-slate-400 font-mono px-1">
             {Math.round(zoom * 100)}%
@@ -408,16 +414,17 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-3 left-4 flex items-center gap-1 text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 pointer-events-none">
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
           <Move className="w-3 h-3 text-sky-400" />
-          <span>滾輪平滑縮放座標軸 • 按住滑鼠左鍵自由平移</span>
+          <span className="hidden sm:inline">滾輪/雙指縮放 • 滑鼠/單指拖曳平移</span>
+          <span className="sm:hidden">雙指縮放 • 單指拖曳</span>
         </div>
       </div>
 
       {/* Gain Slider Footer */}
-      <div className="flex items-center justify-between px-6 py-2.5 bg-slate-950 border-t border-slate-800 text-xs">
-        <div className="flex items-center gap-3 w-1/2">
-          <span className="font-semibold text-slate-300 whitespace-nowrap">動態迴路增益 K:</span>
+      <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-slate-950 border-t border-slate-800 text-xs gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <span className="font-semibold text-slate-300 whitespace-nowrap text-[11px]">增益 K:</span>
           <input
             type="range"
             min="0.05"
@@ -425,14 +432,13 @@ export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK:
             step="0.05"
             value={gainK}
             onChange={e => setGainK(parseFloat(e.target.value))}
-            className="w-full accent-pink-500 cursor-pointer"
+            className="w-full accent-sky-500 cursor-pointer h-1.5"
           />
-          <span className="font-mono text-pink-400 font-bold w-12">{gainK.toFixed(2)}</span>
+          <span className="font-mono text-sky-400 font-bold w-10 text-[11px]">{gainK.toFixed(2)}</span>
         </div>
-        <div className="flex items-center gap-4 text-slate-400">
-          <span>主導極點: <strong className="text-slate-200 font-mono">{dominantPole?.toString() || 'N/A'}</strong></span>
-          <span>阻尼比 ζ: <strong className="text-emerald-400 font-mono">{zeta.toFixed(3)}</strong></span>
-          <span>自然頻率 ωn: <strong className="text-sky-400 font-mono">{wn.toFixed(2)}</strong> rad/s</span>
+        <div className="flex items-center gap-3 text-slate-400 text-[11px]">
+          <span>ζ: <strong className="text-sky-400 font-mono">{zeta.toFixed(3)}</strong></span>
+          <span>ωn: <strong className="text-sky-400 font-mono">{wn.toFixed(2)}</strong></span>
         </div>
       </div>
     </div>

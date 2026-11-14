@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
+import { useCanvasTouchPanZoom } from '../../utils/useCanvasTouch';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
@@ -15,6 +16,17 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Mobile Touch Pan & Pinch Zoom Hook
+  useCanvasTouchPanZoom({
+    canvasRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    minZoom: 0.1,
+    maxZoom: 50,
+  });
 
   const handleReset = () => {
     setZoom(1.0);
@@ -84,31 +96,32 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
     const W = rect.width;
     const H = rect.height;
 
+    // Background (Slate Dark)
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, W, H);
 
-    const pad = 45;
+    const pad = Math.min(45, Math.max(25, W * 0.08));
     const plotW = W - pad * 2;
     const plotH = H - pad * 2;
 
-    const pts = [...tf.poles, ...tf.zeros];
-    let maxR = 6;
-    if (pts.length > 0) {
-      const maxVal = Math.max(...pts.map(p => Math.hypot(p.re, p.im)));
-      if (maxVal > 0) maxR = Math.ceil(maxVal * 1.5);
-    }
+    const allPts = tf.poles.concat(tf.zeros);
+    let maxR = 4;
+    allPts.forEach(pt => {
+      const mag = Math.hypot(pt.re, pt.im);
+      if (isFinite(mag) && mag > maxR && mag < 200) maxR = mag * 1.3;
+    });
 
-    const cx = pad + plotW * 0.65 + pan.x;
-    const cy = pad + plotH / 2 + pan.y;
-    const ppu = ((Math.min(plotW, plotH) / 2) / maxR) * zoom;
+    const basePPU = (Math.min(plotW, plotH) / (maxR * 2.2)) * zoom;
+    const originX = pad + plotW / 2 + pan.x;
+    const originY = pad + plotH / 2 + pan.y;
 
-    const toPxX = (sigma: number) => cx + sigma * ppu;
-    const toPxY = (omega: number) => cy - omega * ppu;
+    const toPxX = (re: number) => originX + re * basePPU;
+    const toPxY = (im: number) => originY - im * basePPU;
 
-    const visibleMinSigma = (pad - cx) / ppu;
-    const visibleMaxSigma = (pad + plotW - cx) / ppu;
-    const visibleMaxOmega = (cy - pad) / ppu;
-    const visibleMinOmega = (cy - (pad + plotH)) / ppu;
+    const visibleMinSigma = (pad - originX) / basePPU;
+    const visibleMaxSigma = (W - pad - originX) / basePPU;
+    const visibleMaxOmega = (originY - pad) / basePPU;
+    const visibleMinOmega = (originY - (H - pad)) / basePPU;
 
     // Clip to plot area
     ctx.save();
@@ -116,16 +129,12 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
     ctx.rect(pad, pad, plotW, plotH);
     ctx.clip();
 
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(pad, pad, plotW, plotH);
-
-    // Dynamic nice grid ticks
-    const sigmaTicks = getNiceTicks(visibleMinSigma, visibleMaxSigma, Math.floor(plotW / 80));
-    const omegaTicks = getNiceTicks(visibleMinOmega, visibleMaxOmega, Math.floor(plotH / 60));
+    // Subtle Grid (Slate)
+    const sigmaTicks = getNiceTicks(visibleMinSigma, visibleMaxSigma, Math.max(4, Math.floor(plotW / 80)));
+    const omegaTicks = getNiceTicks(visibleMinOmega, visibleMaxOmega, Math.max(4, Math.floor(plotH / 60)));
 
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
-
     sigmaTicks.forEach(s => {
       const x = toPxX(s);
       ctx.beginPath();
@@ -142,88 +151,73 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
       ctx.stroke();
     });
 
-    // Constant zeta radial lines (0.2, 0.4, 0.6, 0.8)
-    const zetas = [0.2, 0.4, 0.6, 0.8];
-    zetas.forEach(z => {
-      const theta = Math.acos(z);
-      const radL = Math.max(plotW, plotH) * 2;
-      ctx.strokeStyle = '#334155';
-      ctx.setLineDash([2, 4]);
+    // Real and Imaginary Axes
+    const x0 = toPxX(0);
+    const y0 = toPxY(0);
 
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx - radL * Math.cos(theta), cy - radL * Math.sin(theta));
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx - radL * Math.cos(theta), cy + radL * Math.sin(theta));
-      ctx.stroke();
-      ctx.setLineDash([]);
-    });
-
-    // Axes
+    // Real Axis (Slate)
     ctx.strokeStyle = '#475569';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(pad, cy);
-    ctx.lineTo(pad + plotW, cy);
+    ctx.moveTo(pad, y0);
+    ctx.lineTo(pad + plotW, y0);
     ctx.stroke();
 
-    // Stability Boundary highlight (Imaginary Axis)
+    // Imaginary Axis (Red stability line)
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(cx, pad);
-    ctx.lineTo(cx, pad + plotH);
+    ctx.moveTo(x0, pad);
+    ctx.lineTo(x0, pad + plotH);
     ctx.stroke();
 
-    // Draw Zeros (o)
+    // Draw Zeros (o) (Sky Blue outline)
     tf.zeros.forEach(z => {
       const x = toPxX(z.re);
       const y = toPxY(z.im);
-      ctx.strokeStyle = '#f59e0b';
-      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.fillStyle = '#090d16';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = '#f59e0b';
-      ctx.font = '11px "Fira Code", monospace';
-      ctx.fillText(`(${formatTick(z.re)}, ${formatTick(z.im)})`, x + 10, y - 4);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px "Fira Code", monospace';
+      ctx.fillText(`(${formatTick(z.re)}, ${formatTick(z.im)})`, x + 9, y - 4);
     });
 
-    // Draw Poles (x)
+    // Draw Poles (x) (Stable: Sky Blue, Unstable: Red)
     tf.poles.forEach(p => {
       const x = toPxX(p.re);
       const y = toPxY(p.im);
-      ctx.strokeStyle = p.re < 0 ? '#38bdf8' : '#ef4444';
-      ctx.lineWidth = 3;
+      const isRHP = p.re > 1e-4;
+      ctx.strokeStyle = isRHP ? '#ef4444' : '#38bdf8';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(x - 6, y - 6);
-      ctx.lineTo(x + 6, y + 6);
-      ctx.moveTo(x + 6, y - 6);
-      ctx.lineTo(x - 6, y + 6);
+      ctx.moveTo(x - 5, y - 5);
+      ctx.lineTo(x + 5, y + 5);
+      ctx.moveTo(x + 5, y - 5);
+      ctx.lineTo(x - 5, y + 5);
       ctx.stroke();
 
-      ctx.fillStyle = p.re < 0 ? '#38bdf8' : '#ef4444';
-      ctx.font = '11px "Fira Code", monospace';
-      ctx.fillText(`(${formatTick(p.re)}, ${formatTick(p.im)})`, x + 10, y - 4);
+      ctx.fillStyle = isRHP ? '#ef4444' : '#38bdf8';
+      ctx.font = '10px "Fira Code", monospace';
+      ctx.fillText(`(${formatTick(p.re)}, ${formatTick(p.im)})`, x + 9, y - 4);
     });
 
     ctx.restore(); // Restore clip
 
-    // Draw Axis Labels outside
+    // Draw Axis Labels outside (Slate)
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px "Fira Code", monospace';
+    ctx.font = '10px "Fira Code", monospace';
 
     sigmaTicks.forEach(s => {
       const x = toPxX(s);
       if (x >= pad && x <= pad + plotW) {
         ctx.textAlign = 'center';
-        ctx.fillText(formatTick(s), x, H - pad + 16);
+        ctx.fillText(formatTick(s), x, H - pad + 15);
       }
     });
 
@@ -231,32 +225,31 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
       const y = toPxY(o);
       if (y >= pad && y <= pad + plotH) {
         ctx.textAlign = 'right';
-        ctx.fillText(o === 0 ? '0' : (o > 0 ? `+j${formatTick(o)}` : `-j${formatTick(Math.abs(o))}`), pad - 8, y + 4);
+        ctx.fillText(o === 0 ? '0' : (o > 0 ? `+j${formatTick(o)}` : `-j${formatTick(Math.abs(o))}`), pad - 6, y + 3);
       }
     });
 
-    // Border
+    // Border (Slate)
     ctx.strokeStyle = '#334155';
     ctx.strokeRect(pad, pad, plotW, plotH);
 
   }, [tf, zoom, pan]);
 
+  const hasRHP = tf.poles.some(p => p.re > 1e-4);
+
   return (
     <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-xs">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-slate-200">Pole-Zero Map (極零點分佈圖 pzmap)</span>
-          <span className="text-sky-400">✕ 穩定極點 (LHP)</span>
-          <span className="text-rose-400">✕ 不穩定極點 (RHP)</span>
-          <span className="text-amber-400">○ 零點</span>
-          <span className="text-slate-400">- - 恆等阻尼線 (ζ)</span>
+      {/* Top Banner */}
+      <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-xs gap-2">
+        <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px]">
+          <span className="font-semibold text-slate-200">Pole-Zero Map (極零點圖)</span>
+          <span className="text-sky-400">✕ 左半平面極點 (穩定)</span>
+          <span className="text-red-400">✕ 右半平面極點 (不穩定)</span>
+          <span className="text-sky-300">○ 零點</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            極點數: <strong className="text-sky-400">{tf.poles.length}</strong>
-          </span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-            零點數: <strong className="text-amber-400">{tf.zeros.length}</strong>
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className={`px-2 py-0.5 rounded font-bold ${!hasRHP ? "bg-slate-800 text-sky-400 border border-slate-700" : "bg-red-950/80 text-red-400 border border-red-700"}`}>
+            {!hasRHP ? "開迴路無右半極點 (BIBO穩定)" : "具右半極點 (開迴路不穩定)"}
           </span>
         </div>
       </div>
@@ -268,10 +261,14 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas ref={canvasRef} className="w-full h-full block" />
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block" 
+          style={{ touchAction: 'none' }}
+        />
 
-        {/* Floating Zoom Toolbar */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+        {/* Floating Toolbar */}
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
           <button
             onClick={() => handleZoom(1.3)}
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
@@ -292,8 +289,8 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
             className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
             title="復原預設視角"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            重設視角
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">重設</span>
           </button>
           <div className="text-[10px] text-slate-400 font-mono px-1">
             {Math.round(zoom * 100)}%
@@ -301,9 +298,10 @@ export const PZMapPlot: React.FC<Props> = ({ tf }) => {
         </div>
 
         {/* Tip Badge */}
-        <div className="absolute bottom-3 left-4 flex items-center gap-1 text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 pointer-events-none">
+        <div className="absolute bottom-2 left-3 flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800 pointer-events-none">
           <Move className="w-3 h-3 text-sky-400" />
-          <span>滾輪縮放 S 平面 • 滑鼠拖曳任意平移</span>
+          <span className="hidden sm:inline">滾輪/雙指縮放 • 滑鼠/單指拖曳平移</span>
+          <span className="sm:hidden">雙指縮放 • 單指平移</span>
         </div>
       </div>
     </div>
