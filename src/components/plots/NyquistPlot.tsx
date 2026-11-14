@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { TransferFunction, CNumber } from '../../types';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { TransferFunction } from '../../types';
 import { freqResp } from '../../utils/math';
+import { getNiceTicks, formatTick } from '../../utils/plotUtils';
+import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
   tf: TransferFunction;
@@ -10,7 +12,63 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [sensitivityR, setSensitivityR] = useState<number>(0.1288); // 115 UST default
   const [showSensitivity, setShowSensitivity] = useState<boolean>(true);
-  const [zoomScale, setZoomScale] = useState<number>(1.0);
+
+  // Pan & Zoom
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleReset = () => {
+    setZoom(1.0);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleZoom = (factor: number) => {
+    setZoom(prev => Math.max(0.1, Math.min(prev * factor, 50)));
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+
+      setZoom(prev => {
+        const nextZoom = Math.max(0.1, Math.min(prev * factor, 50));
+        const scaleChange = nextZoom / prev;
+        setPan(p => ({
+          x: mouseX - (mouseX - p.x) * scaleChange,
+          y: mouseY - (mouseY - p.y) * scaleChange
+        }));
+        return nextZoom;
+      });
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y
+    });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,7 +87,6 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     const W = rect.width;
     const H = rect.height;
 
-    // Clear background
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, W, H);
 
@@ -37,28 +94,44 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     const plotW = W - pad * 2;
     const plotH = H - pad * 2;
 
-    // Center point (0, 0)
-    const cx = pad + plotW / 2;
-    const cy = pad + plotH / 2;
+    // Origin center
+    const cx = pad + plotW / 2 + pan.x;
+    const cy = pad + plotH / 2 + pan.y;
 
-    // Base scale (pixels per unit)
-    const basePPU = (Math.min(plotW, plotH) / 4) * zoomScale;
+    // Base unit scale
+    const basePPU = (Math.min(plotW, plotH) / 4) * zoom;
 
     const toPxX = (re: number) => cx + re * basePPU;
     const toPxY = (im: number) => cy - im * basePPU;
 
-    // Background area
+    const visibleMinRe = (pad - cx) / basePPU;
+    const visibleMaxRe = (pad + plotW - cx) / basePPU;
+    const visibleMaxIm = (cy - pad) / basePPU;
+    const visibleMinIm = (cy - (pad + plotH)) / basePPU;
+
+    // Clip to plot area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad, pad, plotW, plotH);
+    ctx.clip();
+
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(pad, pad, plotW, plotH);
 
-    // Grid circles (unit circle, 2, 3)
+    // Dynamic grid circles
+    const maxVisibleDist = Math.max(
+      Math.hypot(visibleMinRe, visibleMinIm),
+      Math.hypot(visibleMaxRe, visibleMaxIm)
+    );
+    const circleTicks = getNiceTicks(0, maxVisibleDist, 5).filter(r => r > 0);
+
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
-    for (let r = 1; r <= 6; r++) {
+    circleTicks.forEach(r => {
       ctx.beginPath();
       ctx.arc(cx, cy, r * basePPU, 0, Math.PI * 2);
       ctx.stroke();
-    }
+    });
 
     // Axes
     ctx.strokeStyle = '#475569';
@@ -86,7 +159,7 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     ctx.fillStyle = '#ef4444';
     ctx.font = '700 12px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('(-1, j0)', critX, critY + 20);
+    ctx.fillText('(-1, j0)', critX, critY + 18);
 
     // Sensitivity Circle centered at (-1, 0) with radius r0 (115 UST P3)
     if (showSensitivity && sensitivityR > 0) {
@@ -101,7 +174,7 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
       ctx.fillStyle = '#10b981';
       ctx.font = '11px "Fira Code", monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`感度圓 r₀ = ${sensitivityR.toFixed(4)}`, critX + sensitivityR * basePPU + 6, critY - 6);
+      ctx.fillText(`r₀ = ${sensitivityR.toFixed(4)}`, critX + sensitivityR * basePPU + 6, critY - 6);
     }
 
     // Sample frequencies for Nyquist contour
@@ -112,23 +185,17 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     const posPts: { x: number; y: number }[] = [];
     const negPts: { x: number; y: number }[] = [];
 
-    let minDistanceToMinusOne = Infinity;
-
     for (let i = 0; i <= N; i++) {
       const w = Math.pow(10, logMin + (i / N) * (logMax - logMin));
       const resp = freqResp(tf, w);
       const re = resp.val.re;
       const im = resp.val.im;
 
-      // Distance to (-1, 0)
-      const dist = Math.hypot(re - (-1), im - 0);
-      minDistanceToMinusOne = Math.min(minDistanceToMinusOne, dist);
-
       posPts.push({ x: toPxX(re), y: toPxY(im) });
-      negPts.push({ x: toPxX(re), y: toPxY(-im) }); // Conjugate for w < 0
+      negPts.push({ x: toPxX(re), y: toPxY(-im) });
     }
 
-    // Draw Positive Frequency Curve (Solid Blue)
+    // Positive Frequency Curve (Solid Blue)
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -138,7 +205,7 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     });
     ctx.stroke();
 
-    // Draw Negative Frequency Curve (Dashed Sky Blue)
+    // Negative Frequency Curve (Dashed Sky Blue)
     ctx.strokeStyle = '#0284c7';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 4]);
@@ -150,20 +217,28 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw directional arrows along positive curve
-    const arrowIndices = [Math.floor(N * 0.2), Math.floor(N * 0.5), Math.floor(N * 0.8)];
-    arrowIndices.forEach(idx => {
-      if (idx < posPts.length - 1) {
-        const p1 = posPts[idx];
-        const p2 = posPts[idx + 1];
-        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-        ctx.fillStyle = '#38bdf8';
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p1.x - 10 * Math.cos(angle - Math.PI / 6), p1.y - 10 * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(p1.x - 10 * Math.cos(angle + Math.PI / 6), p1.y - 10 * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fill();
+    ctx.restore(); // Restore clip
+
+    // Draw Labels outside
+    const reTicks = getNiceTicks(visibleMinRe, visibleMaxRe, Math.floor(plotW / 80));
+    const imTicks = getNiceTicks(visibleMinIm, visibleMaxIm, Math.floor(plotH / 60));
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px "Fira Code", monospace';
+
+    reTicks.forEach(re => {
+      const x = toPxX(re);
+      if (x >= pad && x <= pad + plotW) {
+        ctx.textAlign = 'center';
+        ctx.fillText(formatTick(re), x, H - pad + 16);
+      }
+    });
+
+    imTicks.forEach(im => {
+      const y = toPxY(im);
+      if (y >= pad && y <= pad + plotH) {
+        ctx.textAlign = 'right';
+        ctx.fillText(im === 0 ? '0' : (im > 0 ? `+j${formatTick(im)}` : `-j${formatTick(Math.abs(im))}`), pad - 8, y + 4);
       }
     });
 
@@ -171,10 +246,10 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
     ctx.strokeStyle = '#334155';
     ctx.strokeRect(pad, pad, plotW, plotH);
 
-  }, [tf, sensitivityR, showSensitivity, zoomScale]);
+  }, [tf, sensitivityR, showSensitivity, zoom, pan]);
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800">
+    <div className="relative w-full h-full flex flex-col bg-slate-900 rounded-lg overflow-hidden border border-slate-800 select-none">
       <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-xs">
         <div className="flex items-center gap-4">
           <span className="font-semibold text-slate-200">Nyquist Diagram (奈氏圖)</span>
@@ -195,27 +270,55 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
         </div>
       </div>
 
-      <div className="flex-1 w-full relative">
+      <div 
+        className={`flex-1 w-full relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         <canvas ref={canvasRef} className="w-full h-full block" />
+
+        {/* Floating Zoom Toolbar */}
+        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg shadow-lg">
+          <button
+            onClick={() => handleZoom(1.3)}
+            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            title="放大"
+          >
+            <ZoomIn className="w-4 h-4 text-sky-400" />
+          </button>
+          <button
+            onClick={() => handleZoom(0.77)}
+            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all"
+            title="縮小"
+          >
+            <ZoomOut className="w-4 h-4 text-sky-400" />
+          </button>
+          <div className="w-[1px] h-4 bg-slate-700 mx-0.5" />
+          <button
+            onClick={handleReset}
+            className="p-1.5 hover:bg-slate-800 active:bg-slate-700 text-slate-200 rounded transition-all flex items-center gap-1 text-[11px]"
+            title="復原預設視角"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+            重設視角
+          </button>
+          <div className="text-[10px] text-slate-400 font-mono px-1">
+            {Math.round(zoom * 100)}%
+          </div>
+        </div>
+
+        {/* Tip Badge */}
+        <div className="absolute bottom-3 left-4 flex items-center gap-1 text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 pointer-events-none">
+          <Move className="w-3 h-3 text-sky-400" />
+          <span>滾輪平滑縮放座標 • 按住滑鼠左鍵自由平移奈氏圖</span>
+        </div>
       </div>
 
       {/* Control Footer */}
-      <div className="flex items-center justify-between px-6 py-2.5 bg-slate-950 border-t border-slate-800 text-xs">
-        <div className="flex items-center gap-3 w-1/3">
-          <span className="text-slate-300 whitespace-nowrap">視角縮放:</span>
-          <input
-            type="range"
-            min="0.3"
-            max="3"
-            step="0.1"
-            value={zoomScale}
-            onChange={e => setZoomScale(parseFloat(e.target.value))}
-            className="w-full accent-sky-500 cursor-pointer"
-          />
-          <span className="font-mono text-sky-400 font-bold w-10">{zoomScale.toFixed(1)}x</span>
-        </div>
-
-        {showSensitivity && (
+      {showSensitivity && (
+        <div className="flex items-center justify-between px-6 py-2 bg-slate-950 border-t border-slate-800 text-xs">
           <div className="flex items-center gap-3 w-1/2">
             <span className="text-emerald-400 font-semibold whitespace-nowrap">切線感度圓半徑 r₀:</span>
             <input
@@ -229,8 +332,11 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
             />
             <span className="font-mono text-emerald-400 font-bold w-16">{sensitivityR.toFixed(4)}</span>
           </div>
-        )}
-      </div>
+          <span className="text-slate-400 text-[11px]">
+            115 台聯大 P3 考點：檢驗 |1 + G(jω)| ≥ r₀
+          </span>
+        </div>
+      )}
     </div>
   );
 };
