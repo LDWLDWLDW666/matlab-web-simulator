@@ -1,16 +1,29 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
-import { simulateStepResponse } from '../../utils/math';
+import { simulateStepResponse, feedback, createTF, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
   tf: TransferFunction;
+  gainK?: number;
+  tEnd?: number;
 }
 
-export const StepResponsePlot: React.FC<Props> = ({ tf }) => {
+export const StepResponsePlot: React.FC<Props> = ({ tf, gainK = 1.0, tEnd }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const { t, y, specs } = useMemo(() => simulateStepResponse(tf), [tf]);
+
+  // Closed loop transfer function T(s) = feedback(K * G(s), 1)
+  const effectiveTF = useMemo(() => {
+    try {
+      const kG = createTF(polyScale(tf.num, gainK), tf.den);
+      return feedback(kG, 1);
+    } catch {
+      return tf;
+    }
+  }, [tf, gainK]);
+
+  const { t, y, specs } = useMemo(() => simulateStepResponse(effectiveTF, tEnd || 10), [effectiveTF, tEnd]);
 
   // Pan & Zoom
   const [zoom, setZoom] = useState<number>(1.0);

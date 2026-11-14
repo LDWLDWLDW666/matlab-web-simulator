@@ -6,12 +6,16 @@ import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
   tf: TransferFunction;
+  gainK?: number;
+  setGainK?: (k: number) => void;
 }
 
-export const RootLocusPlot: React.FC<Props> = ({ tf }) => {
+export const RootLocusPlot: React.FC<Props> = ({ tf, gainK: propGainK, setGainK: propSetGainK }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [gainK, setGainK] = useState<number>(1.0);
+  const [internalGainK, setInternalGainK] = useState<number>(1.0);
+  const gainK = propGainK !== undefined ? propGainK : internalGainK;
+  const setGainK = propSetGainK || setInternalGainK;
   const [closedLoopPoles, setClosedLoopPoles] = useState<CNumber[]>([]);
 
   // Pan & Zoom State

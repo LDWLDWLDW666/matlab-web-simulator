@@ -1,17 +1,36 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
-import { freqResp } from '../../utils/math';
+import { freqResp, createTF, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
   tf: TransferFunction;
+  gainK?: number;
+  sensitivityR?: number;
+  setSensitivityR?: (r: number) => void;
 }
 
-export const NyquistPlot: React.FC<Props> = ({ tf }) => {
+export const NyquistPlot: React.FC<Props> = ({ 
+  tf, 
+  gainK = 1.0, 
+  sensitivityR: propR, 
+  setSensitivityR: propSetR 
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [sensitivityR, setSensitivityR] = useState<number>(0.1288); // 115 UST default
+  const [internalR, setInternalR] = useState<number>(0.1288);
+  const sensitivityR = propR !== undefined ? propR : internalR;
+  const setSensitivityR = propSetR || setInternalR;
   const [showSensitivity, setShowSensitivity] = useState<boolean>(true);
+
+  // Scaled open loop plant K * G(s)
+  const effectiveTF = useMemo(() => {
+    try {
+      return createTF(polyScale(tf.num, gainK), tf.den);
+    } catch {
+      return tf;
+    }
+  }, [tf, gainK]);
 
   // Pan & Zoom
   const [zoom, setZoom] = useState<number>(1.0);
@@ -187,7 +206,7 @@ export const NyquistPlot: React.FC<Props> = ({ tf }) => {
 
     for (let i = 0; i <= N; i++) {
       const w = Math.pow(10, logMin + (i / N) * (logMax - logMin));
-      const resp = freqResp(tf, w);
+      const resp = freqResp(effectiveTF, w);
       const re = resp.val.re;
       const im = resp.val.im;
 

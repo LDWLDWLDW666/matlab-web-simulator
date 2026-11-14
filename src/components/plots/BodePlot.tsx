@@ -1,16 +1,27 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { TransferFunction } from '../../types';
-import { computeFrequencySpecs, freqResp, unwrapPhase } from '../../utils/math';
+import { computeFrequencySpecs, freqResp, unwrapPhase, createTF, polyScale } from '../../utils/math';
 import { getNiceTicks, formatTick } from '../../utils/plotUtils';
 import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface Props {
   tf: TransferFunction;
+  gainK?: number;
 }
 
-export const BodePlot: React.FC<Props> = ({ tf }) => {
+export const BodePlot: React.FC<Props> = ({ tf, gainK = 1.0 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const specs = useMemo(() => computeFrequencySpecs(tf), [tf]);
+
+  // Scaled open loop plant K * G(s)
+  const effectiveTF = useMemo(() => {
+    try {
+      return createTF(polyScale(tf.num, gainK), tf.den);
+    } catch {
+      return tf;
+    }
+  }, [tf, gainK]);
+
+  const specs = useMemo(() => computeFrequencySpecs(effectiveTF), [effectiveTF]);
 
   // Pan & Zoom
   const [zoom, setZoom] = useState<number>(1.0);
@@ -111,7 +122,7 @@ export const BodePlot: React.FC<Props> = ({ tf }) => {
     for (let i = 0; i <= N; i++) {
       const logW = sampleLogMin + (i / N) * (sampleLogMax - sampleLogMin);
       const w = Math.pow(10, logW);
-      const resp = freqResp(tf, w);
+      const resp = freqResp(effectiveTF, w);
       freqs.push(w);
       mags.push(resp.magDB);
       rawPhases.push(resp.phaseDeg);
